@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wxdeck: a self-hosted radar and storm workstation for Australia</title>
+<meta name="description" content="Live BoM radar and Doppler, raw volumes, Himawari satellite, lightning, Windy-style forecasts, storm tracking and NWS-style alerts. Self-hosted, free data, Android app.">
+<meta property="og:title" content="wxdeck">
+<meta property="og:description" content="A RadarScope + Windy style weather workstation for Australia that you run yourself.">
+<meta property="og:image" content="img/satellite.jpg">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛈️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0f1a20; --panel: #15232b; --panel2: #1b2c35; --line: #263b44; --text: #d6e2e4; --dim: #8aa0a6; --amber: #f2a93b; --warm: #ef6f5c; --cyan: #79d3e6; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 "Barlow", system-ui, sans-serif; }
+  a { color: var(--amber); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  header.top { position: sticky; top: 0; z-index: 5; background: rgba(15,26,32,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  header.top .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
+  .brand { color: var(--amber); font: 700 24px "Barlow Semi Condensed", sans-serif; letter-spacing: .02em; text-decoration: none; }
+  nav { display: flex; gap: 18px; margin-left: auto; font-size: 15px; }
+  nav a { color: var(--dim); text-decoration: none; }
+  nav a:hover { color: var(--text); }
+  .gh { border: 1px solid var(--line); border-radius: 8px; padding: 5px 12px; color: var(--text) !important; }
+  .hero { padding: 64px 0 28px; }
+  .hero h1 { font: 700 clamp(34px, 6vw, 58px)/1.05 "Barlow Semi Condensed", sans-serif; margin: 0 0 16px; letter-spacing: -.01em; }
+  .hero h1 em { font-style: normal; color: var(--amber); }
+  .hero p.lead { font-size: 20px; color: var(--dim); max-width: 760px; margin: 0 0 26px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 12px 20px; border-radius: 10px; font-weight: 600; text-decoration: none; }
+  .btn.primary { background: var(--amber); color: var(--bg); }
+  .btn.ghost { border: 1px solid var(--line); color: var(--text); }
+  .shot { margin: 36px 0 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+  .shot img { display: block; width: 100%; height: auto; }
+  .caption { color: var(--dim); font-size: 14px; margin-top: 10px; }
+  section { padding: 56px 0 8px; }
+  h2 { font: 700 32px/1.15 "Barlow Semi Condensed", sans-serif; margin: 0 0 8px; }
+  .sub { color: var(--dim); margin: 0 0 26px; max-width: 760px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+  .card h3 { margin: 0 0 6px; font: 600 19px "Barlow Semi Condensed", sans-serif; color: var(--text); }
+  .card p { margin: 0; color: var(--dim); font-size: 15px; line-height: 1.5; }
+  .card .k { color: var(--amber); font-weight: 600; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .two .card { padding: 22px; }
+  .two ul { margin: 10px 0 0; padding-left: 18px; color: var(--dim); font-size: 15px; }
+  .split { display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: start; }
+  .split img { width: 100%; border-radius: 12px; border: 1px solid var(--line); }
+  pre { background: #0a1216; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font: 14px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--text); }
+  ol.steps { padding-left: 20px; }
+  ol.steps li { margin: 0 0 14px; }
+  .note { border-left: 3px solid var(--warm); background: var(--panel); padding: 14px 18px; border-radius: 0 10px 10px 0; color: var(--text); }
+  .note b { color: var(--warm); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; }
+  footer { margin-top: 64px; padding: 30px 0 50px; border-top: 1px solid var(--line); color: var(--dim); font-size: 14px; }
+  @media (max-width: 820px) { nav a:not(.gh) { display: none; } .two, .split { grid-template-columns: 1fr; } .hero { padding-top: 38px; } }
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="#">wxdeck</a>
+  <nav><a href="#features">Features</a><a href="#modes">Server or phone</a><a href="#install">Install</a><a href="#data">Data</a>
+    <a class="gh" href="https://github.com/ReverendOzmund/wxdeck">GitHub</a></nav>
+</div></header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>Storm-chaser radar for Australia,<br><em>on your own server.</em></h1>
+    <p class="lead">Live BoM radar and Doppler, every radar stitched into one map, raw dual-pol volumes, Himawari satellite,
+      live lightning, Windy-style forecast maps, storm tracking, supercell and tornado tools, and its own NWS-style warnings
+      read out loud. Free data, no API keys, one Docker container, plus an Android app.</p>
+    <div class="cta">
+      <a class="btn primary" href="#install">Get started</a>
+      <a class="btn ghost" href="https://github.com/ReverendOzmund/wxdeck/releases">Download the Android app</a>
+    </div>
+    <figure class="shot"><img src="img/satellite.jpg" alt="wxdeck showing the national view with Himawari infrared, a rain-in-the-next-hour card and storm threat ratings" width="1600" height="978"></figure>
+    <p class="caption">The national view with Himawari infrared, the rain-in-the-next-hour card and storm threat ratings.</p>
+  </div>
+
+  <section id="features">
+    <h2>Nerdy underneath, friendly on top</h2>
+    <p class="sub">Pick Simple, Storm chaser or Pro. Simple answers "is it going to rain on me?"; Pro gives you raw volumes and cross-sections.</p>
+    <div class="grid">
+      <div class="card"><span class="k">Radar</span><h3>Every BoM radar, one map</h3><p>64 to 512 km loops, Doppler wind and rainfall, a seamless all-Australia mosaic, 48 hours of history, up to four synced panes.</p></div>
+      <div class="card"><span class="k">Raw volumes</span><h3>Dual-pol, every tilt</h3><p>Dealiased and storm-relative velocity, ZDR, CC, KDP, hydrometeor class, cross-sections, echo tops, VIL, MESH hail size.</p></div>
+      <div class="card"><span class="k">Severe weather</span><h3>Supercell and tornado tools</h3><p>Storm cells with arrival times, live Doppler couplets, mesocyclone and debris detection, SCP / STP / helicity overlays, threat ratings with reasons.</p></div>
+      <div class="card"><span class="k">Warnings</span><h3>NWS-style, spoken</h3><p>wxdeck's own tornado, severe thunderstorm and flash flood polygons and model watches, plus BoM's warnings, with a tone and voice: "Severe thunderstorm warning issued for…"</p></div>
+      <div class="card"><span class="k">Satellite</span><h3>Himawari, decoded</h3><p>Raw infrared with real cloud-top temperatures, water vapour, GeoColor, day cloud phase, night microphysics, dust and air mass.</p></div>
+      <div class="card"><span class="k">Lightning</span><h3>Live strikes and thunder rings</h3><p>Community lightning with rings that travel at the speed of sound, strike density and "lightning within 15 km" alerts.</p></div>
+      <div class="card"><span class="k">Forecasts</span><h3>Windy-style maps</h3><p>30+ layers with wind particles, CAPE, shear, upper air, sea and air quality, model comparison and skew-T soundings.</p></div>
+      <div class="card"><span class="k">Everyday</span><h3>Rain in the next hour</h3><p>A radar nowcast in plain words with minute bars, BoM-style rain ranges for the week, and a spoken morning summary.</p></div>
+      <div class="card"><span class="k">Fast paths</span><h3>Search everything</h3><p>Ctrl+K for layers, radars, modes and places, an Explain button for every product, share links, favourites and a kiosk view.</p></div>
+    </div>
+  </section>
+
+  <section id="modes">
+    <h2>Your server, or just your phone</h2>
+    <p class="sub">The Android app does both. Switch any time.</p>
+    <div class="split">
+      <div class="two">
+        <div class="card"><span class="k">Server mode</span><h3>The full build</h3>
+          <p>Run wxdeck in Docker on a home PC or server; the app and any browser connect to it.</p>
+          <ul><li>48-hour history and raw volumes</li><li>Raw Himawari bands</li><li>Alerts from the server, even with the app closed</li><li>Works away from home with Tailscale</li></ul></div>
+        <div class="card"><span class="k">Phone mode</span><h3>No server at all</h3>
+          <p>The same wxdeck page runs inside the app and fetches its own data.</p>
+          <ul><li>Live radar, Doppler and the national mosaic</li><li>wxdeck's warnings, storm cells and nowcast</li><li>Lightning, forecasts, satellite</li><li>BoM and lightning alerts with the app closed</li></ul></div>
+      </div>
+      <figure style="margin:0"><img src="img/app-start.jpg" alt="The wxdeck Android app start screen, choosing between your server and running on the phone" width="600" height="1298"></figure>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <ol class="steps">
+      <li>Install <a href="https://docs.docker.com/get-docker/">Docker</a> (Docker Desktop on Windows or macOS).</li>
+      <li>Get wxdeck and start it:
+        <pre>git clone https://github.com/ReverendOzmund/wxdeck.git
+cd wxdeck
+docker compose up -d --build</pre></li>
+      <li>Open <code>http://localhost:8686</code>. The welcome tour asks how much detail you want and where home is.
+        Set your local radars and state warnings feed in <code>docker-compose.yml</code> (see the
+        <a href="https://github.com/ReverendOzmund/wxdeck#configure">README</a>).</li>
+      <li>Phone: open <code>http://&lt;your-server&gt;:8686/app</code> on Android, or grab the APK from
+        <a href="https://github.com/ReverendOzmund/wxdeck/releases">Releases</a> and choose "Run on this phone".</li>
+    </ol>
+    <figure class="shot" style="margin-top:20px"><img src="img/command-search.jpg" alt="The command search listing modes, layers and places for the word storm" width="1600" height="978"></figure>
+    <p class="caption">Ctrl+K: one search box for modes, layers, radars, settings and places.</p>
+  </section>
+
+  <section id="data">
+    <h2>Data and fine print</h2>
+    <p class="note"><b>Unofficial.</b> wxdeck's own warnings, watches and storm ratings come from a hobby algorithm and can be wrong,
+      late or missing. Always follow the Bureau of Meteorology and emergency services.</p>
+    <p class="sub" style="margin-top:20px">wxdeck ships no weather data. Your own server or phone fetches it for your personal use from:</p>
+    <table>
+      <tr><th>Source</th><th>Used for</th></tr>
+      <tr><td><a href="https://www.bom.gov.au/copyright">Bureau of Meteorology</a></td><td>Radar, warnings, observations, radar archive. Personal use; don't serve it to others.</td></tr>
+      <tr><td><a href="https://www.blitzortung.org">Blitzortung.org</a> / <a href="https://www.lightningmaps.org">LightningMaps</a></td><td>Lightning. Private, non-commercial use.</td></tr>
+      <tr><td><a href="https://open-meteo.com">Open-Meteo</a></td><td>Forecasts and forecast maps. Non-commercial free tier, CC BY 4.0.</td></tr>
+      <tr><td>NOAA, NASA GIBS and FIRMS, CIRA SLIDER</td><td>Satellite and fire hotspots.</td></tr>
+      <tr><td>Aviation Weather Center, University of Wyoming, OpenStreetMap, GeoNames, Natural Earth</td><td>Airport reports, soundings, address search, towns, borders.</td></tr>
+    </table>
+    <p class="caption">Full list and terms: <a href="https://github.com/ReverendOzmund/wxdeck/blob/main/NOTICE.md">NOTICE.md</a>. Screenshots show NOAA Himawari and NASA imagery.</p>
+  </section>
+</main>
+
+<footer><div class="wrap">wxdeck is open source under the MIT licence · <a href="https://github.com/ReverendOzmund/wxdeck">github.com/ReverendOzmund/wxdeck</a></div></footer>
+</body>
+</html>

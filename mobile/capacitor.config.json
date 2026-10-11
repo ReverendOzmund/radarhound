@@ -1,0 +1,18 @@
+{
+  "appId": "au.wxdeck.app",
+  "appName": "wxdeck",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "hostname": "localhost",
+    "cleartext": true,
+    "allowNavigation": [
+      "*"
+    ]
+  },
+  "android": {
+    "appendUserAgent": "wxdeck-app",
+    "backgroundColor": "#0f1a20",
+    "adjustMarginsForEdgeToEdge": "force"
+  }
+}

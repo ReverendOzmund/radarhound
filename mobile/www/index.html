@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>wxdeck</title>
+<style>
+  :root { --bg: #0f1a20; --panel: #15232b; --line: #263b44; --text: #d6e2e4; --dim: #8aa0a6; --amber: #f2a93b; --warm: #ef6f5c; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: "Segoe UI", Roboto, system-ui, sans-serif; }
+  body { padding: calc(env(safe-area-inset-top, 0px) + 28px) 22px calc(env(safe-area-inset-bottom, 0px) + 22px); }
+  .brand { color: var(--amber); font-weight: 700; font-size: 30px; letter-spacing: .02em; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin: 0 0 26px; font-size: 15px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  label { display: block; color: var(--dim); font-size: 14px; margin-bottom: 8px; }
+  label.row { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--text); }
+  label.row input[type=checkbox] { width: 20px; height: 20px; }
+  select { background: #1b2c35; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px; font-size: 15px; }
+  input { width: 100%; font-size: 17px; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: #1b2c35; color: var(--text); }
+  input:focus { outline: 2px solid var(--amber); }
+  button { width: 100%; margin-top: 14px; padding: 13px; font-size: 17px; font-weight: 600; border-radius: 10px; border: 0; background: var(--amber); color: var(--bg); }
+  button.ghost { background: transparent; color: var(--dim); border: 1px solid var(--line); font-weight: 500; }
+  .msg { min-height: 22px; margin: 12px 0 0; font-size: 14px; }
+  .msg.err { color: var(--warm); }
+  .msg a { color: var(--amber); }
+  .tips { margin-top: 22px; color: var(--dim); font-size: 14px; line-height: 1.5; }
+  .tips b { color: var(--text); font-weight: 600; }
+  .tips code { background: #1b2c35; border-radius: 5px; padding: 1px 5px; color: var(--text); }
+  .modes { display: grid; gap: 10px; margin-bottom: 14px; }
+  .mode { display: grid; gap: 3px; text-align: left; margin: 0; background: var(--panel); color: var(--text); border: 1px solid var(--line); font-weight: 400; }
+  .mode b { font-size: 17px; } .mode span { color: var(--dim); font-size: 13px; }
+  .mode.on { border: 2px solid var(--amber); }
+  .phone-note { color: var(--dim); font-size: 14px; line-height: 1.5; margin: 0 0 6px; }
+  .recent { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .recent a { color: var(--amber); font-size: 14px; text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+</style>
+</head>
+<body>
+  <p class="brand">wxdeck</p>
+  <p class="sub">Radar, satellite, lightning and storm tools.</p>
+  <div class="modes" role="tablist">
+    <button class="mode on" id="mServer" type="button"><b>My wxdeck server</b><span>Everything: 48 h history, raw volumes, alerts from the server</span></button>
+    <button class="mode" id="mPhone" type="button"><b>Run on this phone</b><span>No server needed: live radar, Doppler, lightning, forecasts and warnings</span></button>
+  </div>
+  <div class="card">
+    <div id="phoneBox" hidden>
+      <p class="phone-note">Everything runs on this phone, straight from BoM, Open-Meteo, NASA and LightningMaps. It uses more data and battery while open.
+        Server-only: 48-hour history, raw volume scans, raw satellite bands and the verification log. With the app closed, alerts cover BoM warnings and lightning nearby.</p>
+    </div>
+    <div id="serverBox">
+    <label for="url">Your wxdeck server</label>
+    <input id="url" type="url" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.50:8686">
+    <div class="recent" id="recent"></div>
+    <label for="pw" style="margin-top:14px">Password <span style="opacity:.7">(only if your server has one)</span></label>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="Leave empty if none">
+    </div>
+    <label class="row"><input type="checkbox" id="bg" checked> Warning alerts when the app is closed (notification, tone and voice)</label>
+    <label class="row">Alerts for <select id="where"><option value="home">home</option><option value="me">where the phone is</option></select></label>
+    <label class="row">Tone and voice for <select id="scope"><option value="near">warnings near home</option><option value="all">every warning</option></select></label>
+    <label class="row">Near means within <select id="near"><option value="25">25 km</option><option value="50" selected>50 km</option><option value="100">100 km</option><option value="200">200 km</option></select></label>
+    <label class="row"><input type="checkbox" id="far" checked> Quiet notification for warnings further away</label>
+    <label class="row"><input type="checkbox" id="loud"> Severe thunderstorm alerts sound on silent too (tornado always does)</label>
+    <label class="row"><input type="checkbox" id="voice" checked> Read alerts aloud</label>
+    <label class="row"><input type="checkbox" id="bom" checked> Include BoM warnings</label>
+    <label class="row"><input type="checkbox" id="ltg" checked> Lightning within 15 km</label>
+    <label class="row"><input type="checkbox" id="arr" checked> Storm heading my way (arrival time)</label>
+    <label class="row"><input type="checkbox" id="rain"> Rain starting in the next 30 minutes</label>
+    <label class="row">Quiet hours <select id="qf"></select> to <select id="qt"></select></label>
+    <p style="margin:2px 0 0 0;color:var(--dim);font-size:13px">In quiet hours lightning, storm-approaching and rain alerts are silent. Warnings still sound.</p>
+    <label class="row">Morning summary <select id="brief"></select></label>
+    <button id="go">Connect</button>
+    <p class="msg" id="msg"></p>
+  </div>
+  <div class="tips">
+    <p><b>At home:</b> use the server's address on your Wi-Fi, for example <code>http://192.168.1.50:8686</code>.</p>
+    <p><b>Away from home:</b> install Tailscale on the server and this phone, then use the server's Tailscale address, for example <code>https://myserver.tail1234.ts.net</code>. The https address also unlocks the "Me" location button.</p>
+    <p>To switch servers later, tap ⇄ at the top of wxdeck.</p>
+  </div>
+<script>
+  const $ = id => document.getElementById(id);
+  const KEY = "wxdeck.server", RECENT = "wxdeck.recent";
+  const norm = u => { u = (u || "").trim().replace(/\/+$/, ""); if (u && !/^https?:\/\//i.test(u)) u = "http://" + u; return u; };
+  const recent = () => { try { return JSON.parse(localStorage.getItem(RECENT) || "[]"); } catch { return []; } };
+  function showRecent() {
+    const esc = v => String(v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    $("recent").innerHTML = recent().map(u => `<a href="#" data-u="${esc(u)}">${esc(u.replace(/^https?:\/\//, ""))}</a>`).join("");
+    $("recent").querySelectorAll("a").forEach(a => a.onclick = e => { e.preventDefault(); $("url").value = a.dataset.u; connect(); });
+  }
+  async function reachable(u) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000);
+    try { await fetch(u + "/api/config", { mode: "no-cors", signal: ctl.signal, cache: "no-store" }); return true; }
+    catch { return false; } finally { clearTimeout(t); }
+  }
+  let mode = localStorage.getItem("wxdeck.mode") || "server";
+  function setMode(m) {
+    mode = m;
+    $("mServer").classList.toggle("on", m === "server"); $("mPhone").classList.toggle("on", m === "phone");
+    $("serverBox").hidden = m !== "server"; $("phoneBox").hidden = m !== "phone";
+    $("go").textContent = m === "phone" ? "Start" : "Connect";
+    $("msg").textContent = "";
+  }
+  $("mServer").onclick = () => setMode("server");
+  $("mPhone").onclick = () => setMode("phone");
+  async function connect(auto = false) {
+    if (mode === "phone") return startPhone(auto);
+    const u = norm($("url").value);
+    if (!u) { $("msg").textContent = "Type your server's address first."; $("msg").className = "msg err"; return; }
+    $("msg").className = "msg"; $("msg").textContent = `Connecting to ${u}…`;
+    if (!(await reachable(u))) {
+      $("msg").className = "msg err";
+      $("msg").innerHTML = `Couldn't reach that address. Check the phone is on the same network (or Tailscale is on), and that wxdeck is running.
+        <br><a href="#" id="tryPhone">Run on this phone instead</a>`;
+      $("tryPhone").onclick = e => { e.preventDefault(); setMode("phone"); };
+      return;
+    }
+    localStorage.setItem(KEY, u);
+    localStorage.setItem("wxdeck.mode", "server");
+    const prefs = { enabled: $("bg").checked, scope: $("scope").value, voice: $("voice").checked, bom: $("bom").checked,
+                    near: +$("near").value, far: $("far").checked, loudSevere: $("loud").checked,
+                    ltg: $("ltg").checked, arr: $("arr").checked, rain: $("rain").checked, where: $("where").value,
+                    quietFrom: +$("qf").value, quietTo: +$("qt").value, briefHour: +$("brief").value };
+    localStorage.setItem("wxdeck.alertPrefs", JSON.stringify(prefs));
+    localStorage.setItem("wxdeck.key", $("pw").value);
+    localStorage.setItem(RECENT, JSON.stringify([u, ...recent().filter(x => x !== u)].slice(0, 4)));
+    const P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.WxAlerts;
+    let res = null;
+    try {
+      if (P) res = await P.start({ server: u, ...prefs, key: $("pw").value, askBattery: prefs.enabled && !localStorage.getItem("wxdeck.askedBattery") });
+      if (prefs.enabled) localStorage.setItem("wxdeck.askedBattery", "1");
+    } catch (e) { /* running in a normal browser */ }
+    if (prefs.enabled && prefs.where === "me" && res && res.location === false && !auto) {
+      $("msg").className = "msg err";
+      $("msg").innerHTML = `Location isn't allowed "all the time", so alerts will use home. <a href="#" id="lskip">Continue</a>`;
+      $("lskip").onclick = e => { e.preventDefault(); location.replace(u + "/"); };
+      return;
+    }
+    if (prefs.enabled && res && res.notifications === false && !(auto === true && localStorage.getItem("wxdeck.noNotif"))) {
+      // without notification permission the background alerts can't show or sound: say so instead of failing quietly
+      $("msg").className = "msg err";
+      $("msg").innerHTML = `Notifications are turned off for wxdeck, so warnings can't reach you while the app is closed.
+        <br><a href="#" id="nset">Turn notifications on</a> (then tap Connect again) or <a href="#" id="nskip">continue without them</a>.`;
+      $("nset").onclick = e => { e.preventDefault(); P.openNotificationSettings(); };
+      $("nskip").onclick = e => { e.preventDefault(); localStorage.setItem("wxdeck.noNotif", "1"); location.replace(u + "/"); };
+      return;
+    }
+    location.replace(u + "/");
+  }
+  function prefsNow() {
+    return { enabled: $("bg").checked, scope: $("scope").value, voice: $("voice").checked, bom: $("bom").checked,
+             near: +$("near").value, far: $("far").checked, loudSevere: $("loud").checked,
+             ltg: $("ltg").checked, arr: $("arr").checked, rain: $("rain").checked, where: $("where").value,
+             quietFrom: +$("qf").value, quietTo: +$("qt").value, briefHour: +$("brief").value };
+  }
+  async function startPhone(auto = false) {
+    const prefs = prefsNow();
+    localStorage.setItem("wxdeck.alertPrefs", JSON.stringify(prefs));
+    localStorage.setItem("wxdeck.mode", "phone");
+    const P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.WxAlerts;
+    let res = null;
+    try {
+      if (P) res = await P.start({ ...prefs, mode: "phone", server: null, askBattery: prefs.enabled && !localStorage.getItem("wxdeck.askedBattery") });
+      if (prefs.enabled) localStorage.setItem("wxdeck.askedBattery", "1");
+    } catch (e) { /* normal browser */ }
+    if (prefs.enabled && res && res.notifications === false && !(auto === true && localStorage.getItem("wxdeck.noNotif"))) {
+      $("msg").className = "msg err";
+      $("msg").innerHTML = `Notifications are turned off for wxdeck, so warnings can't reach you while the app is closed.
+        <br><a href="#" id="nset">Turn notifications on</a> (then tap Start again) or <a href="#" id="nskip">continue without them</a>.`;
+      $("nset").onclick = e => { e.preventDefault(); P.openNotificationSettings(); };
+      $("nskip").onclick = e => { e.preventDefault(); localStorage.setItem("wxdeck.noNotif", "1"); location.replace("app.html"); };
+      return;
+    }
+    location.replace("app.html");
+  }
+  $("go").onclick = () => connect();
+  $("url").addEventListener("keydown", e => { if (e.key === "Enter") connect(); });
+  const hrs = Array.from({ length: 24 }, (_, h) => `<option value="${h}">${String(h).padStart(2, "0")}:00</option>`).join("");
+  $("qf").innerHTML = `<option value="-1">off</option>` + hrs; $("qt").innerHTML = hrs; $("qt").value = "7";
+  $("brief").innerHTML = `<option value="-1">off</option>` + hrs;
+  const saved = localStorage.getItem(KEY);
+  const wantChange = new URLSearchParams(location.search).has("change");
+  $("url").value = saved || "";
+  try {
+    const pr = JSON.parse(localStorage.getItem("wxdeck.alertPrefs") || "{}");
+    if ("enabled" in pr) {
+      $("bg").checked = pr.enabled; $("scope").value = pr.scope || "near"; $("voice").checked = pr.voice !== false; $("bom").checked = pr.bom !== false;
+      $("near").value = String(pr.near || 50); $("far").checked = pr.far !== false; $("loud").checked = !!pr.loudSevere;
+      $("qf").value = String(pr.quietFrom ?? -1); $("qt").value = String(pr.quietTo ?? 7); $("brief").value = String(pr.briefHour ?? -1);
+      $("ltg").checked = pr.ltg !== false; $("arr").checked = pr.arr !== false; $("rain").checked = !!pr.rain; $("where").value = pr.where || "home";
+    }
+  } catch { }
+  $("pw").value = localStorage.getItem("wxdeck.key") || "";
+  showRecent();
+  setMode(mode);
+  if (!wantChange && (mode === "phone" || saved)) connect(true);
+</script>
+</body>
+</html>

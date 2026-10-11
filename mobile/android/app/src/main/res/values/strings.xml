@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">wxdeck</string>
+    <string name="title_activity_main">wxdeck</string>
+    <string name="package_name">au.wxdeck.app</string>
+    <string name="custom_url_scheme">au.wxdeck.app</string>
+</resources>

@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/static/phone-server.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="wxdeck">
+<title>wxdeck</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛈️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<meta name="theme-color" content="#0f1a20">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/style.css?v=20">
+</head>
+<body>
+<header class="top">
+  <div class="brand">wxdeck</div>
+  <select id="radarSel" aria-label="Radar site"></select>
+  <nav id="productTabs" class="tabs" aria-label="Radar product"></nav>
+  <a class="get-app" href="/app" title="Phone app and install options">Get the app</a>
+  <a class="app-server" href="http://localhost/?change=1" title="Change server">⇄</a>
+  <div class="clock" id="clock"></div>
+</header>
+
+<main class="layout">
+  <section class="scope">
+    <div class="fav-chips" id="favChips" hidden></div>
+    <div class="map-chips">
+        <button id="modesChip" class="chip modes" title="One-click setups for storms, shear, CAPE, rotation, hail and more">◧ Modes</button>
+        <button id="findChip" class="chip" title="Find a town, suburb or address on the map (F)">🔎 Find</button>
+        <div class="seg" role="group" aria-label="View" id="viewSeg">
+          <button data-view="radar">Radar</button><button data-view="both">Both</button><button data-view="sat">Satellite</button><button data-view="fc">Forecast</button>
+        </div>
+        <button id="ltgChip" class="chip" aria-pressed="true" title="Toggle lightning (L)">⚡ Lightning</button>
+        <div class="seg" role="group" aria-label="Panes" id="layoutSeg">
+          <button data-layout="1" title="Single pane">1</button><button data-layout="2" title="Two panes">2</button><button data-layout="4" title="Four panes" class="chaser">4</button>
+        </div>
+        <button id="rulerChip" class="chip" aria-pressed="false" title="Ruler: drag on the map (or hold Shift and drag)">📏 Ruler</button>
+        <button id="cellsChip" class="chip" aria-pressed="false" title="Storm cell tracking (C)">⛈ Cells</button>
+        <button id="meChip" class="chip" aria-pressed="false" title="Show where you are (needs https or localhost)">◎ Me</button>
+        <button id="xsChip" class="chip pro" aria-pressed="false" title="Cross-section: drag a line on the map (raw volume, X)">✂ Section</button>
+        <button id="explainChip" class="chip" title="What am I looking at? (I)">ⓘ Explain</button>
+        <button id="helpChip" class="chip" title="Keyboard shortcuts (?)">?</button>
+        <button id="warnChip" class="chip warn" hidden title="Current BoM warnings"></button>
+        <button id="wxwChip" class="chip wxw" hidden title="wxdeck automated warnings and watches"></button>
+      </div>
+    <div class="scope-frame" id="scopeFrame">
+      <div class="panes" id="panes" data-layout="1">
+        <div class="pane" data-pane="0"><canvas id="radar" aria-label="Radar display"></canvas><canvas id="particles" class="particles" hidden></canvas><div class="pane-label" id="paneLabel0"></div></div>
+        <div class="pane" data-pane="1"><canvas aria-label="Radar pane 2"></canvas><select class="pane-sel" aria-label="Pane 2 product"></select></div>
+        <div class="pane" data-pane="2"><canvas aria-label="Radar pane 3"></canvas><select class="pane-sel" aria-label="Pane 3 product"></select></div>
+        <div class="pane" data-pane="3"><canvas aria-label="Radar pane 4"></canvas><select class="pane-sel" aria-label="Pane 4 product"></select></div>
+      </div>
+      <div class="frame-stamp" id="frameStamp"></div>
+      <div class="tap-read" id="tapRead" hidden></div>
+      <div class="alert-banner" id="alertBanner" hidden role="alert"></div>
+      <div class="place-box geo" id="placeBox" hidden>
+        <input id="placeIn" type="search" placeholder="Town, suburb or address" autocomplete="off" aria-label="Find a place">
+        <div class="geo-results" id="placeResults"></div>
+      </div>
+      <div class="zoom-ctl">
+        <button id="zoomIn" title="Zoom in">+</button>
+        <button id="zoomOut" title="Zoom out">−</button>
+        <button id="zoomReset" title="Reset view">⟲</button>
+      </div>
+      <div class="xsect" id="xsect" hidden>
+        <div class="xs-head">
+          <span id="xsTitle">Cross-section</span>
+          <select id="xsMoment" aria-label="Cross-section product"></select>
+          <span class="xs-read" id="xsRead"></span>
+          <button id="xsClose" title="Close (Esc)">×</button>
+        </div>
+        <canvas id="xsCanvas"></canvas>
+      </div>
+      <div class="empty" id="emptyMsg" hidden>Waiting for the first frames. The archiver checks BoM every couple of minutes.</div>
+    </div>
+
+    <div class="loopbar">
+      <button id="playBtn" class="play" title="Play/pause (space)">▶</button>
+      <button id="prevBtn" title="Previous frame (←)">‹</button>
+      <button id="nextBtn" title="Next frame (→)">›</button>
+      <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Frame">
+      <span class="frame-count" id="frameCount">0 / 0</span>
+      <button id="exportBtn" class="export" title="Record the loop as a video file">⏺ Export</button>
+      <label id="windowWrap">Loop
+        <select id="windowSel">
+          <option value="0.5">30 min</option>
+          <option value="1" selected>1 h</option>
+          <option value="3">3 h</option>
+          <option value="6">6 h</option>
+          <option value="12">12 h</option>
+          <option value="24">24 h</option>
+          <option value="48">48 h</option>
+        </select>
+      </label>
+      <label>Speed
+        <input type="range" id="speed" min="60" max="800" value="250" aria-label="Frame delay">
+      </label>
+    </div>
+
+    <div class="volbar" id="fcbar" hidden>
+      <label>Layer <select id="fcLayer"></select></label>
+      <label id="fcLevelWrap">Level <select id="fcLevel">
+        <option value="925">925 hPa (~800 m)</option><option value="850">850 hPa (~1.5 km)</option><option value="700">700 hPa (~3 km)</option>
+        <option value="500">500 hPa (~5.5 km)</option><option value="300">300 hPa (~9 km)</option><option value="250">250 hPa (~10.5 km, jet)</option>
+      </select></label>
+      <label id="fcModelWrap">Model <select id="fcModel">
+        <option value="best">Best match</option><option value="ecmwf">ECMWF</option><option value="gfs">GFS</option><option value="icon">ICON</option><option value="access">ACCESS-G (BoM)</option>
+      </select></label>
+      <label>Isolines <select id="fcIso">
+        <option value="none">None</option><option value="mslp">Pressure</option><option value="gph">Geopotential height</option><option value="temp">Temperature</option><option value="fzl">Freezing level</option>
+      </select></label>
+      <label class="check"><input type="checkbox" id="fcParticles"> Particles</label>
+      <span class="vol-status">Open-Meteo, 100 km grid, next 48 hours. Use 2 or 4 panes to compare models.</span>
+    </div>
+
+    <div class="volbar" id="volbar" hidden>
+      <label>Day <select id="daySel"></select></label>
+      <label>Product <select id="momentSel"></select></label>
+      <label>Tilt <select id="tiltSel"></select></label>
+      <label id="refMinWrap">Hide below <select id="refMin">
+        <option value="-30">Show all</option><option value="0">0 dBZ</option><option value="5">5 dBZ</option>
+        <option value="10">10 dBZ</option><option value="15">15 dBZ</option><option value="20">20 dBZ</option><option value="30">30 dBZ</option>
+      </select></label>
+      <label>Contours <select id="contourSel">
+        <option value="none">None</option><option value="MESH">Hail size</option><option value="ROT">Rotation</option><option value="ET45">45 dBZ tops</option><option value="VIL">VIL</option>
+      </select></label>
+      <span class="cases">
+        <button class="tbtn" id="caseSave" title="Bookmark this scan">★ Save case</button>
+        <select id="caseSel" aria-label="Saved cases"><option value="">Saved cases</option></select>
+        <button class="tbtn" id="caseDel" title="Remove the selected case" hidden>remove</button>
+      </span>
+      <span id="motionWrap" hidden>Storm motion toward
+        <input type="number" id="motionDir" min="0" max="359" step="5" aria-label="Storm heading, degrees"> °
+        at <input type="number" id="motionSpd" min="0" max="200" step="5" aria-label="Storm speed, km/h"> km/h
+      </span>
+      <span class="vol-status" id="volStatus"></span>
+    </div>
+
+    <details class="tuning" open>
+      <summary>Layers and settings</summary>
+      <div class="set-tabs" role="tablist" aria-label="Settings groups">
+        <button data-tab="map" role="tab">Map</button><button data-tab="radar" role="tab">Radar</button><button data-tab="ltg" role="tab">Lightning</button><button data-tab="storms" role="tab">Storms</button><button data-tab="alerts" role="tab">Alerts</button><button data-tab="sat" role="tab">Satellite</button><button data-tab="adv" role="tab">More</button>
+      </div>
+      <div class="tuning-grid" data-group="map">
+        <label>Home <button class="tbtn" id="homeBtn" title="Set your home location">Set home</button></label>
+        <label data-tip="Night is wxdeck's dark map; BoM classic is the Bureau's own light basemap">Map
+          <select id="mapStyle"><option value="dark">Night</option><option value="bom">BoM classic</option></select>
+        </label>
+        <label class="check"><input type="checkbox" id="lyrTopo" checked> Terrain</label>
+        <label class="check"><input type="checkbox" id="lyrRange" checked> Range rings</label>
+        <label class="check"><input type="checkbox" id="lyrLoc" checked> Towns</label>
+        <label>Town labels
+          <select id="townLabels"><option value="bom">BoM map</option><option value="sharp">Sharp (GeoNames)</option></select>
+        </label>
+        <label class="check"><input type="checkbox" id="lyrHome" checked> Home marker</label>
+        <label class="check"><input type="checkbox" id="lyrRoads"> Highways</label>
+        <label class="check" data-tip="BoM automatic weather stations: temperature, wind barbs, gusts"><input type="checkbox" id="lyrStations"> Station obs</label>
+        <label class="check" data-tip="Airport reports (METAR): cloud base, visibility, present weather. Colour = flight category: green VFR, blue MVFR, red IFR, magenta LIFR"><input type="checkbox" id="lyrMetar"> Airport obs (METAR)</label>
+        <label class="check" id="lyrCamsWrap" hidden data-tip="Public webcams (Windy). Tap one to see its latest picture"><input type="checkbox" id="lyrCams"> Webcams</label>
+        <label class="check" data-tip="NASA FIRMS satellite hotspots from the last 24 hours"><input type="checkbox" id="lyrFires"> Fires (24 h)</label>
+        <label class="check" data-tip="Hail, wind, flooding and tornado reports you've logged with the pin's Report button"><input type="checkbox" id="lyrReports" checked> Storm reports</label>
+      </div>
+      <div class="tuning-grid" data-group="radar" hidden>
+        <label>Colour table
+          <select id="paletteSel"></select>
+        </label>
+        <label>Echo opacity
+          <input type="range" id="opacity" min="20" max="100" value="90">
+        </label>
+        <label data-tip="Hide light echoes (drizzle, clutter) below this level">Hide below
+          <select id="threshold"></select>
+        </label>
+        <label class="check"><input type="checkbox" id="smooth"> Smooth display</label>
+        <label class="check" data-tip="All-Australia view: every radar blended into one map. Zoom in and each radar's own 128 km image takes over"><input type="checkbox" id="lyrSeamless" checked> Seamless national</label>
+        <label class="check chaser" data-tip="Fill gaps around a single radar with its neighbours' images"><input type="checkbox" id="lyrMosaic"> Mosaic other radars</label>
+        <label class="chaser" data-tip="How strong an echo must be to count as a storm cell (lower = more, weaker cells)">Cell threshold
+          <select id="cellThr"><option value="5">~36 dBZ</option><option value="6">~39 dBZ</option><option value="7">~42 dBZ</option><option value="9">~48 dBZ</option></select>
+        </label>
+        <label class="pro">Palettes <button class="tbtn" id="palExport" type="button">Export</button><button class="tbtn" id="palImport" type="button">Import</button><input type="file" id="palFile" accept="application/json" hidden></label>
+      </div>
+      <div class="tuning-grid" data-group="ltg" hidden>
+        <label>Strikes from last
+          <select id="ltgWindow"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select>
+        </label>
+        <label class="check" data-tip="Shade areas by how many strikes they've had instead of single marks"><input type="checkbox" id="ltgDensity"> Strike density</label>
+        <label class="check" data-tip="Each new strike sends out a ring at the speed of sound: when it reaches you, you'll hear the thunder. Plus 10, 20 and 40 km rings around home"><input type="checkbox" id="ltgRings" checked> Thunder rings</label>
+        <label>Beep for strikes within
+          <select id="ltgAlert"><option value="0">Off</option><option value="10">10 km</option><option value="20">20 km</option><option value="50">50 km</option></select>
+        </label>
+      </div>
+      <div class="tuning-grid" data-group="storms" hidden>
+        <label class="check" data-tip="wxdeck's own automated warnings (radar-indicated tornado, severe thunderstorm, flash flood). Unofficial: BoM always takes precedence"><input type="checkbox" id="lyrWxw" checked> wxdeck warnings</label>
+        <label class="check" data-tip="Areas where the forecast model shows ingredients for severe weather in the next 12 hours"><input type="checkbox" id="lyrWatches" checked> Model watches</label>
+        <label class="check chaser" data-tip="Spots on the live Doppler image where wind blows towards and away from the radar side by side: possible rotation"><input type="checkbox" id="lyrCouplets" checked> Live Doppler couplets</label>
+        <label class="check pro" data-tip="Mesocyclone, tornado vortex and debris detections from full-resolution archive scans"><input type="checkbox" id="lyrRotDet" checked> Rotation detection (archive)</label>
+        <label class="chaser" data-tip="Contours of a model ingredient over the radar. STP 1+ and SCP 1+ mark tornado and supercell-friendly air">Environment overlay <select id="envOverlay">
+          <option value="none">None</option><option value="stp">STP (tornado)</option><option value="scp">SCP (supercell)</option>
+          <option value="srh1">0–1 km helicity</option><option value="shear6">0–6 km shear</option>
+        </select></label>
+      </div>
+      <div class="tuning-grid" data-group="alerts" hidden>
+        <label>Alerts <select id="alertMode"><option value="near">Tone + voice near me</option><option value="all">Every warning</option><option value="off">Off</option></select></label>
+        <label data-tip="Use this device's location (needs https) or home">Alerts for <select id="alertWhere"><option value="home">Home</option><option value="me">Where I am</option></select></label>
+        <label>Near means within <select id="alertNear"><option value="25">25 km</option><option value="50">50 km</option><option value="100">100 km</option><option value="200">200 km</option></select></label>
+        <label class="check"><input type="checkbox" id="alertFar" checked> Chime for warnings further away</label>
+        <label class="check"><input type="checkbox" id="alertVoice" checked> Read alerts aloud</label>
+        <label class="check"><input type="checkbox" id="alertBom" checked> Include BoM warnings</label>
+        <label class="check" data-tip="Lightning within 15 km in the last 10 minutes"><input type="checkbox" id="alertLtg" checked> Lightning nearby</label>
+        <label class="check" data-tip="A tracked thunderstorm whose path passes within 8 km in the next hour"><input type="checkbox" id="alertArr" checked> Storm approaching</label>
+        <label class="check" data-tip="Radar nowcast: rain starting within 30 minutes"><input type="checkbox" id="alertRain"> Rain soon</label>
+        <label data-tip="Lightning, storm-approaching and rain alerts stay quiet (banner only) in these hours. Warnings always sound">Quiet hours
+          <select id="quietFrom"></select> to <select id="quietTo"></select></label>
+        <button class="tbtn" id="alertTest" type="button">Test alert</button>
+      </div>
+      <div class="tuning-grid" data-group="sat" hidden>
+        <label>Satellite channel
+          <select id="satSel">
+            <option value="geocolor">True colour (GeoColor)</option>
+            <option value="ir13e">Infrared, enhanced</option>
+            <option value="ir13g">Infrared, greyscale</option>
+            <option value="wv08">Water vapour</option>
+            <option value="nmp">Night microphysics (fog, low cloud)</option>
+            <option value="dust">Dust</option>
+            <option value="dcp">Day cloud phase (ice vs water tops, daytime)</option>
+            <option value="vis">Visible (NASA, slower)</option>
+            <option value="airmass">Air mass (NASA, slower)</option>
+          </select>
+        </label>
+        <label>Satellite opacity (Both)
+          <input type="range" id="satOpacity" min="10" max="100" value="60">
+        </label>
+      </div>
+      <div class="tuning-grid" data-group="adv" hidden>
+        <label data-tip="Simple shows the essentials; Storm chaser adds Doppler and storm tools; Pro shows everything">Detail level <select id="uiLevel"><option value="simple">Simple</option><option value="chaser">Storm chaser</option><option value="pro">Pro (everything)</option></select></label>
+        <button class="tbtn" id="shareBtn" type="button" title="Copy a link to exactly this view">🔗 Copy link to this view</button>
+        <button class="tbtn" id="tourBtn" type="button">Show the welcome tour</button>
+        <button class="tbtn" id="paletteBtn" type="button" title="Search everything (Ctrl+K)">⌘ Command search</button>
+        <a class="tbtn" href="/?kiosk=1" target="_blank" rel="noopener" data-tip="Full-screen radar, rain card and alerts for a wall tablet or spare screen. Stays awake and keeps looping">🖥 Kiosk view</a>
+        <label>Settings file <button class="tbtn" id="setExport" type="button">Export</button><button class="tbtn" id="setImport" type="button">Import</button><input type="file" id="setFile" accept="application/json" hidden></label>
+        <label class="check pro"><input type="checkbox" id="gpuRender" checked> GPU rendering</label>
+        <label class="check pro"><input type="checkbox" id="perfOn"> Performance overlay (P)</label>
+        <a class="tbtn" id="logoutBtn" href="/logout" hidden>Log out</a>
+      </div>
+    </details>
+  </section>
+
+  <aside class="side">
+    <section class="panel now-panel" id="nowPanel">
+      <h2><span id="nowTitle">Right now at home</span> <button class="link-btn" id="nowWhere" title="Nowcast for where you are">use my location</button></h2>
+      <div class="now-line" id="nowLine">Checking the radar…</div>
+      <div class="now-bars" id="nowBars" aria-label="Rain over the next hour"></div>
+      <div class="now-facts" id="nowFacts"></div>
+      <div class="now-actions"><button class="tbtn" id="briefBtn" type="button" title="Today's forecast, warnings and rain, read aloud">🔊 Read me today</button><span class="dim" id="briefText"></span></div>
+    </section>
+
+    <section class="panel readout" id="readout">
+      <h2>Under the cursor</h2>
+      <div class="ro-value" id="roValue">Hover the radar</div>
+      <div class="ro-sat" id="roSat"></div>
+      <dl class="ro-grid">
+        <dt id="roRadarLbl">From radar</dt><dd id="roRadar">–</dd>
+        <dt>From home</dt><dd id="roHome">–</dd>
+        <dt>Position</dt><dd id="roPos">–</dd>
+        <dt id="roBeamLbl" hidden>Beam height</dt><dd id="roBeam" hidden>–</dd>
+      </dl>
+      <div class="legend" id="legend"></div>
+      <div class="ro-panes" id="roPanes"></div>
+      <div class="ltg-summary" id="ltgSummary"></div>
+    </section>
+
+    <section class="panel" id="wxwPanel" hidden>
+      <h2>wxdeck warnings</h2>
+      <div id="wxwBody"></div>
+    </section>
+
+    <section class="panel" id="stormPanel" hidden>
+      <h2>Storm threats</h2>
+      <div id="stormBody"></div>
+    </section>
+
+    <section class="panel" id="warnPanel" hidden>
+      <h2>BoM warnings</h2>
+      <div id="warnBody"></div>
+    </section>
+
+    <section class="panel pro" id="rotPanel" hidden>
+      <h2>Rotation</h2>
+      <div id="rotBody"></div>
+    </section>
+
+    <section class="panel" id="cellPanel" hidden>
+      <h2>Storm cells</h2>
+      <div id="cellBody"></div>
+    </section>
+
+    <section class="panel" id="pinPanel" hidden>
+      <h2>Pinned point <button class="link-btn" id="pinClear" title="Clear (Esc)">clear</button><button class="link-btn" id="pinHome" title="Use this point as home">make home</button><button class="link-btn" id="pinFc" title="Forecast and sounding for this point">forecast here</button><button class="link-btn" id="pinSpot" title="Save as a favourite spot">save spot</button><button class="link-btn" id="pinReport" title="Log a storm report here">report</button></h2>
+      <div id="pinBody"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Observations</h2>
+      <div id="obs" class="obs"></div>
+    </section>
+
+    <section class="panel">
+      <h2><span id="fcTitle">Next 72 hours at home</span>
+        <select id="spotSel" class="spot-sel" aria-label="Forecast location"></select>
+        <button class="link-btn" id="fcBack" hidden>back to home</button>
+        <button class="link-btn" id="fcSnd" title="Skew-T and hodograph for this point">sounding</button></h2>
+      <div id="fcTemp" class="chart"></div>
+      <div id="fcRain" class="chart"></div>
+      <div id="fcWind" class="chart"></div>
+      <div id="fcCape" class="chart"></div>
+    </section>
+
+    <section class="panel pro" id="verifyPanel">
+      <h2>Warning verification <button class="link-btn" id="verifyLoad">refresh</button></h2>
+      <div id="verifyBody" class="verify"><p class="dim">How wxdeck's warnings compared with BoM warnings and storm reports over the last 30 days.</p></div>
+    </section>
+
+    <section class="panel chaser">
+      <h2>Model spread</h2>
+      <div id="fcModels" class="chart"></div>
+      <div id="fcModelRain" class="chart"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Week</h2>
+      <div id="daily" class="daily"></div>
+    </section>
+
+    <p class="credit">Radar and observations © Commonwealth of Australia, Bureau of Meteorology. Forecasts from Open-Meteo.</p>
+  </aside>
+</main>
+<div class="tip" id="tip" hidden></div>
+<div class="toast" id="toast" hidden role="status"></div>
+<div class="pop" id="explain" hidden role="dialog" aria-label="What am I looking at"></div>
+<div class="help" id="cmdDlg" hidden role="dialog" aria-label="Command search">
+  <div class="cmd-card">
+    <input id="cmdIn" type="search" placeholder="Search layers, radars, modes, places, settings…" autocomplete="off" aria-label="Command search">
+    <div class="cmd-list" id="cmdList" role="listbox"></div>
+    <div class="cmd-foot">↑ ↓ to move · Enter to run · Shift+Enter or ☆ to pin it above the map · Esc to close</div>
+  </div>
+</div>
+<div class="help" id="tourDlg" hidden role="dialog" aria-label="Welcome">
+  <div class="help-card tour-card" id="tourCard"></div>
+</div>
+<div class="help" id="homeDlg" hidden role="dialog" aria-label="Set home">
+  <div class="help-card home-card">
+    <h2>Set home</h2>
+    <p class="home-note">Home is used for the forecast, distances, lightning alerts and storm arrival times. It's saved on the server, so every device sees it.</p>
+    <div class="geo">
+      <input id="homeSearch" type="search" placeholder="Type an address, suburb or town" autocomplete="off" enterkeyhint="search" aria-label="Search for a place">
+      <div class="geo-results" id="homeResults" role="listbox"></div>
+    </div>
+    <label>Name <input id="homeNameIn" maxlength="40" autocomplete="off"></label>
+    <label>Latitude <input id="homeLatIn" type="number" step="0.0001" min="-90" max="90"></label>
+    <label>Longitude <input id="homeLonIn" type="number" step="0.0001" min="-180" max="180"></label>
+    <label>Radars <input id="radarsIn" autocomplete="off" placeholder="70, 79"></label>
+    <p class="home-note">BoM radar numbers to follow, comma separated (70 Perth, 79 Watheroo, 58 South Doodlakine, 31 Albany). New ones appear after the next poll, about 2 minutes.</p>
+    <div class="home-actions">
+      <button id="homePick" type="button">Pick on map</button>
+      <button id="homeLocate" type="button">Use my location</button>
+    </div>
+    <p class="home-msg" id="homeMsg"></p>
+    <div class="home-actions end">
+      <button id="homeCancel" type="button">Cancel</button>
+      <button id="homeSave" type="button" class="primary">Save</button>
+    </div>
+  </div>
+</div>
+<div class="help" id="sndDlg" hidden role="dialog" aria-label="Forecast sounding">
+  <div class="help-card snd-card">
+    <div class="snd-head"><h2 id="sndTitle">Forecast sounding</h2>
+      <select id="sndSrc" aria-label="Sounding source"><option value="model">Model forecast</option><option value="obs">Observed (radiosonde)</option></select>
+      <select id="sndView" aria-label="Chart"><option value="skewt">Skew-T</option><option value="th">Time-height</option></select>
+      <select id="sndTime" aria-label="Forecast hour"></select><button id="sndClose" title="Close">×</button></div>
+    <div class="snd-body">
+      <canvas id="sndSkew"></canvas>
+      <div class="snd-side"><canvas id="sndHodo"></canvas><div id="sndStats" class="snd-stats"></div></div>
+    </div>
+  </div>
+</div>
+<div class="help" id="modesDlg" hidden role="dialog" aria-label="Modes">
+  <div class="help-card modes-card">
+    <div class="snd-head"><h2>Modes</h2><button class="tbtn" id="modesSave" type="button">Save current setup</button><button id="modesClose" title="Close">×</button></div>
+    <p class="home-note">Each mode sets the view, panes, products, layers and overlays for one job. Archive modes use yesterday's raw volumes; live and forecast modes are real time.</p>
+    <div class="modes-list" id="modesList"></div>
+  </div>
+</div>
+<div class="help" id="repDlg" hidden role="dialog" aria-label="Storm report">
+  <div class="help-card home-card">
+    <h2>Log a storm report</h2>
+    <p class="home-note">Saved on your server and shown on the map for 24 hours after the time you give.</p>
+    <label>What <select id="repKind"><option value="hail">Hail</option><option value="wind">Wind damage</option><option value="rain">Heavy rain / flooding</option><option value="funnel">Funnel / tornado</option><option value="lightning">Lightning damage</option><option value="other">Other</option></select></label>
+    <label>Hail size (mm) <input id="repSize" type="number" min="0" max="200" step="1"></label>
+    <label>When <input id="repTime" type="datetime-local"></label>
+    <label>Notes <input id="repNote" maxlength="200"></label>
+    <div class="home-actions end"><button id="repCancel" type="button">Cancel</button><button id="repSave" type="button" class="primary">Save</button></div>
+  </div>
+</div>
+<div class="help" id="help" hidden role="dialog" aria-label="Keyboard shortcuts">
+  <div class="help-card">
+    <h2>Shortcuts</h2>
+    <dl>
+      <dt>Space</dt><dd>Play or pause</dd>
+      <dt>← →</dt><dd>Step frames or scans</dd>
+      <dt>↑ ↓</dt><dd>Change tilt (raw volume)</dd>
+      <dt>R / V / S</dt><dd>Reflectivity, velocity, storm-relative velocity (raw volume)</dd>
+      <dt>L</dt><dd>Lightning on or off</dd>
+      <dt>F</dt><dd>Find a town, suburb or address</dd>
+      <dt>Click</dt><dd>Pin a point and keep its readout</dd>
+      <dt>Shift + drag</dt><dd>Measure distance and bearing</dd>
+      <dt>P</dt><dd>Performance overlay</dd>
+      <dt>C</dt><dd>Storm cell tracking (live reflectivity)</dd>
+      <dt>X</dt><dd>Cross-section tool (raw volume): drag a line A to B</dd>
+      <dt>Esc</dt><dd>Clear pin, ruler or this panel</dd>
+      <dt>Ctrl + K or /</dt><dd>Command search: layers, radars, modes, places, settings</dd>
+      <dt>N</dt><dd>Jump to the newest frame</dd>
+      <dt>I</dt><dd>What am I looking at? (explains the current product)</dd>
+      <dt>?</dt><dd>Show this panel</dd>
+    </dl>
+  </div>
+</div>
+<script src="/static/perf.js?v=20"></script>
+<script src="/static/algo.js?v=20"></script>
+<script src="/static/app.js?v=20"></script>
+<script src="/static/gl.js?v=20"></script>
+<script src="/static/seamless.js?v=20"></script>
+<script src="/static/cells.js?v=20"></script>
+<script src="/static/layers.js?v=20"></script>
+<script src="/static/supercell.js?v=20"></script>
+<script src="/static/alerts.js?v=1"></script>
+<script src="/static/ux.js?v=1"></script>
+<script src="/static/modes.js?v=20"></script>
+<script src="/static/sounding.js?v=20"></script>
+<script src="/static/panels.js?v=20"></script>
+<script src="/static/phone-engine.js"></script>
+<script src="/static/phone-ui.js"></script>
+</body>
+</html>

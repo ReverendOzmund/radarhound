@@ -1,0 +1,56 @@
+services:
+  wxdeck:
+    build: .
+    container_name: wxdeck
+    restart: unless-stopped
+    ports:
+      - "8686:8686"
+    volumes:
+      - wxdeck-data:/data
+    environment:
+      # BoM radar site numbers, comma separated (70 = Perth/Serpentine, 79 = Watheroo, 58 = South Doodlakine, 31 = Albany)
+      RADARS: "70"
+      # Product suffixes: 4=64km 3=128km 2=256km 1=512km I=Doppler wind A=5-min rain B=1h rain C=since 9am D=24h
+      PRODUCTS: "4,3,2,1,I,A,B,C,D"
+      POLL_SECONDS: "120"
+      RETENTION_HOURS: "48"
+      # BoM observation stations as PRODUCT.WMO (Perth, Perth Airport, Rottnest Island)
+      STATIONS: "IDW60901.94608,IDW60901.94151,IDW60901.94602"
+      # Starting home point and radars. Once you change them in the app (Display -> Home),
+      # the app's saved values in the data volume win, so updates never reset them.
+      HOME_NAME: "Home"
+      HOME_LAT: "-31.95"
+      HOME_LON: "115.86"
+      TZ_NAME: "Australia/Perth"
+      # BoM public feeds for your state: warnings RSS and the state-wide station map
+      WARNINGS_FEED: "IDZ00060.warnings_wa"
+      OBS_MAP_PRODUCT: "IDW60920"
+      # Radiosonde station for observed soundings (94610 = Perth Airport) and forecast grid size
+      # (Open-Meteo's free tier counts every grid point as a call: 13 x 13 = 169 per layer group)
+      OBS_SOUNDING_STATION: "94610"
+      FC_GRID: "13"
+      # BoM forecast districts that count as "near home" for BoM warnings (towns near home match anyway)
+      BOM_AREAS: "Lower West,Perth Metropolitan"
+      # Voice for spoken alerts (any Piper voice name; downloaded once into the data volume)
+      ALERT_VOICE: "en_GB-alan-medium"
+      # wxdeck's own automated (unofficial) radar-indicated warnings and model watches
+      WXDECK_WARNINGS: "on"
+      # Password for the whole site (leave empty on a home network; set one before exposing it)
+      WXDECK_PASSWORD: ""
+      # Free key from https://api.windy.com to show public webcams (optional)
+      WINDY_WEBCAMS_KEY: ""
+      # "Lightning nearby" alert distance in km
+      LIGHTNING_ALERT_KM: "15"
+      # All-Australia view: polls every BoM radar's 512 km composite (~66 radars) and stitches a
+      # national mosaic every few minutes. Set NATIONAL to "off" to save bandwidth.
+      NATIONAL: "on"
+      NATIONAL_POLL_SECONDS: "360"
+      # Raw volume archive (BoM Level 1 data on NCI): max disk used for downloaded scans
+      ARCHIVE_CACHE_GB: "5"
+      # Live lightning from Blitzortung.org (personal, non-commercial use)
+      LIGHTNING: "on"
+      LIGHTNING_RADIUS_KM: "800"
+      LIGHTNING_RETENTION_DAYS: "30"
+
+volumes:
+  wxdeck-data:

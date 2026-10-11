@@ -1,0 +1,21 @@
+# never commit the app signing key or its passwords
+*.jks
+*.keystore
+mobile/keystore.properties
+
+# build output and dependencies
+mobile/node_modules/
+mobile/out/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/capacitor-cordova-android-plugins/build/
+mobile/android/app/src/main/assets/public/
+mobile/android/local.properties
+mobile/android/.kotlin/
+__pycache__/
+*.pyc
+
+# local data and secrets
+data/
+.env
