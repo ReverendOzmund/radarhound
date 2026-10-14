@@ -6,7 +6,7 @@ code only. Each data source has its own terms, and you are responsible for follo
 
 | Source | What wxdeck uses | Terms in short |
 |---|---|---|
-| [Bureau of Meteorology](https://www.bom.gov.au/copyright) | Radar images and loops, warnings, station observations, radar archive (via NCI) | © Commonwealth of Australia. By default for personal use only; no redistribution or commercial use; radar may need a data licence to publish. Don't run a public wxdeck that serves BoM imagery to others. |
+| [Bureau of Meteorology](https://www.bom.gov.au/copyright) | Radar images, warnings and station observations (from BoM's [anonymous FTP feed](https://www.bom.gov.au/catalogue/anon-ftp.shtml), the website as fallback), radar archive (via NCI) | © Commonwealth of Australia. By default for personal use only; no redistribution or commercial use; radar may need a data licence to publish. Don't run a public wxdeck that serves BoM imagery to others. |
 | [Blitzortung.org](https://www.blitzortung.org) / [LightningMaps.org](https://www.lightningmaps.org) | Live lightning | Community network; private, non-commercial use. Ask them before using it in anything public. |
 | [Open-Meteo](https://open-meteo.com/en/terms) | Forecasts, forecast maps, ensemble rain ranges, marine, air quality, geocoding | Free for non-commercial use (under 10,000 calls a day); data CC BY 4.0. Ads or subscriptions need a paid plan. |
 | [NOAA Himawari on AWS](https://registry.opendata.aws/noaa-himawari/) | Raw Himawari-9 bands | Open data. |

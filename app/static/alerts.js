@@ -88,7 +88,11 @@ function alertBanner(a, more = 0) {
   const el = $("alertBanner");
   el.className = `alert-banner ${a.type === "TOR" ? "tor" : a.source === "BoM" ? "bom" : "svr"}`;
   const muted = !IN_APP && !(ALERT.ctx && ALERT.ctx.state === "running");
-  el.innerHTML = `<b>${esc(a.title)}</b><span>${esc(a.source === "BoM" ? a.title : a.speech)}${more ? ` <i>(+${more} more)</i>` : ""}</span>
+  const sub = a.source === "BoM"
+    ? ["Bureau of Meteorology", (a.areas || []).length ? `includes ${a.areas.slice(0, 4).join(", ")}` : "",
+       a.issued ? `issued ${new Date(a.issued).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""].filter(Boolean).join(" · ")
+    : a.speech;
+  el.innerHTML = `<b>${esc(a.title)}</b><span>${esc(sub)}${more ? ` <i>(+${more} more)</i>` : ""}</span>
     ${muted ? `<em class="sound-off">Tap anywhere to turn alert sound on</em>` : ""}
     <button id="alertShow">Show</button><button id="alertClose" aria-label="Dismiss">×</button>`;
   el.hidden = false;

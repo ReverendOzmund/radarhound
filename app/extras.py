@@ -190,10 +190,30 @@ def _num(x):
         return None
 
 
-async def station_obs(client: httpx.AsyncClient, bom: str, product: str):
-    r = await client.get(f"{bom}/fwo/{product}.xml")
+async def _fwo(client, bom, name, get):
+    """A BoM /fwo/ file: through `get` (BoM's FTP feed, falling back to the website) when given."""
+    if get:
+        return await get(name)
+    r = await client.get(f"{bom}/fwo/{name}")
     r.raise_for_status()
-    root = ET.fromstring(r.content)
+    return r.content
+
+
+def station_rows(xml: bytes):
+    """Every station in a BoM state observations XML (IDx60920), with its raw latest values."""
+    root = ET.fromstring(xml)
+    for st in root.iter("station"):
+        a = st.attrib
+        vals, tm = {}, None
+        for per in st.iter("period"):
+            tm = per.attrib.get("time-utc", tm)
+            for el in per.iter("element"):
+                vals[el.attrib.get("type")] = el.text
+        yield a, tm, vals
+
+
+async def station_obs(client: httpx.AsyncClient, bom: str, product: str, get=None):
+    root = ET.fromstring(await _fwo(client, bom, f"{product}.xml", get))
     out = []
     for st in root.iter("station"):
         a = st.attrib
@@ -249,11 +269,9 @@ async def towns(client: httpx.AsyncClient, data_dir: Path, centres, radius_km=80
     return out
 
 
-async def warnings(client: httpx.AsyncClient, bom: str, feed: str):
+async def warnings(client: httpx.AsyncClient, bom: str, feed: str, get=None):
     """BoM's public warnings RSS for one state (e.g. IDZ00060.warnings_wa)."""
-    r = await client.get(f"{bom}/fwo/{feed}.xml")
-    r.raise_for_status()
-    root = ET.fromstring(r.content)
+    root = ET.fromstring(await _fwo(client, bom, f"{feed}.xml", get))
     out = []
     for it in root.iter("item"):
         title = " ".join((it.findtext("title") or "").split())
@@ -379,9 +397,16 @@ async def state_borders(client: httpx.AsyncClient, data_dir: Path, country="Aust
     return lines
 
 
-async def warning_text(client: httpx.AsyncClient, link: str) -> str:
-    """Plain text of a BoM warning page (for "Locations which may be affected include ..." matching)."""
+async def warning_text(client: httpx.AsyncClient, link: str, get=None) -> str:
+    """Plain text of a BoM warning page (for "Locations which may be affected include ..." matching).
+    Warning pages are /products/IDxxxxx.shtml; the FTP feed has the same warning as IDxxxxx.txt."""
     import html as _html
+    m = re.search(r"/(ID[A-Z]\d{5})\.shtml", link)
+    if get and m:
+        try:
+            return re.sub(r"\s+", " ", (await get(f"{m.group(1)}.txt")).decode("utf-8", "replace"))[:6000]
+        except Exception:
+            pass
     r = await client.get(link.replace("http://", "https://"), timeout=30)
     r.raise_for_status()
     t = re.sub(r"<script.*?</script>|<style.*?</style>", " ", r.text, flags=re.S)

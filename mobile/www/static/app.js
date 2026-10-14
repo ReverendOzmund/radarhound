@@ -1252,9 +1252,9 @@ function drawPane(p) {
     const lv = paneLive(p);
     const gpuSeam = seamlessTakesOver(p);            // the GPU draws the mosaic and the radars together
     if (lv && lv.frame && lv.frame.data && !gpuSeam) {
-      // zoomed in, BoM's in-image caption and copyright bar would be blown up across the map: hide them
-      const zoomedIn = Math.min(canvas.width, canvas.height) / 2 / S.view.scale < lv.prod.km * 0.7;
-      drawCentered(renderLiveFrame(lv.frame, lv.prod.type || "0", zoomedIn), frameN(lv.frame.data), lv.prod.km);
+      // BoM's in-image caption and copyright bar repeat what the frame stamp shows and sit across the map:
+      // always hide them (the source is credited in the footer and the data notes)
+      drawCentered(renderLiveFrame(lv.frame, lv.prod.type || "0", true), frameN(lv.frame.data), lv.prod.km);
     }
     drawSeamless(p, gpuSeam ? lv : null);
   } else {
@@ -2421,14 +2421,29 @@ function renderTabs() {
   fillPaneSelects();
   const tabs = $("productTabs");
   tabs.innerHTML = "";
+  // reflectivity ranges, Doppler, rainfall and raw volumes as labelled groups instead of one long row
+  const GROUPS = { "4": ["Reflectivity", "64"], "3": ["Reflectivity", "128"], "2": ["Reflectivity", "256"], "1": ["Reflectivity", "512 km"],
+    I: ["Doppler", "Velocity"], A: ["Rainfall", "5 min"], B: ["Rainfall", "1 h"], C: ["Rainfall", "Since 9am"], D: ["Rainfall", "24 h"] };
+  const groups = new Map();
+  const group = name => {
+    if (!groups.has(name)) {
+      const g = document.createElement("div");
+      g.className = "tab-group"; g.setAttribute("role", "group"); g.setAttribute("aria-label", name);
+      if (name !== "_") { const l = document.createElement("span"); l.className = "tg-label"; l.textContent = name; g.appendChild(l); }
+      else g.classList.add("solo");
+      tabs.appendChild(g); groups.set(name, g);
+    }
+    return groups.get(name);
+  };
   for (const p of S.radar.products) {
     const b = document.createElement("button");
-    b.textContent = p.label;
+    const gl = GROUPS[p.suffix];
+    b.textContent = gl ? gl[1] : p.label;
     b.disabled = !p.available;
-    b.title = p.available ? p.pid : `${p.pid}: ${p.error || "not available"}`;
+    b.title = p.available ? `${p.label} (${p.pid})` : `${p.label} (${p.pid}): ${p.error || "not available"}`;
     b.setAttribute("aria-pressed", String(S.mode === "live" && S.product && S.product.pid === p.pid));
     b.onclick = () => selectProduct(p.suffix);
-    tabs.appendChild(b);
+    group(gl ? gl[0] : "_").appendChild(b);
   }
   const raw = document.createElement("button");
   raw.textContent = "Raw volume";
@@ -2438,7 +2453,7 @@ function renderTabs() {
   if (isNational()) raw.title = "Raw volumes are per radar: pick a single radar to use them";
   raw.setAttribute("aria-pressed", String(S.mode === "raw"));
   raw.onclick = () => selectRaw();
-  tabs.appendChild(raw);
+  group("Archive").appendChild(raw);
 }
 
 function setLiveUI(live) {
@@ -2505,6 +2520,7 @@ function selectRadar(id) {
   if (isNational() && S.settings.view !== "fc" && S.settings.layout > 1) setLayout(1);
   if (isNational()) { if (S.settings.product === "raw") S.settings.product = "N"; fitView(2560); }
   if (S.settings.product === "raw") selectRaw(); else selectProduct(S.settings.product);
+  if (window.radarPickerSync) radarPickerSync();
 }
 
 async function loadConfig() {

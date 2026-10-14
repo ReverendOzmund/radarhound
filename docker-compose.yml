@@ -8,6 +8,10 @@ services:
     volumes:
       - wxdeck-data:/data
     environment:
+      # Where BoM data comes from: "auto" (BoM's anonymous FTP feed, falling back to the website if FTP is
+      # blocked on your network), "ftp" or "web". BoM blocks busy addresses on its website, FTP is the
+      # channel it offers for automated use, so leave this on auto unless you have a reason not to.
+      BOM_SOURCE: "auto"
       # BoM radar site numbers, comma separated (70 = Perth/Serpentine, 79 = Watheroo, 58 = South Doodlakine, 31 = Albany)
       RADARS: "70"
       # Product suffixes: 4=64km 3=128km 2=256km 1=512km I=Doppler wind A=5-min rain B=1h rain C=since 9am D=24h

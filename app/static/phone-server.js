@@ -155,7 +155,7 @@ const WXP = (() => {
     const radars = followed().map(id => {
       const r = radarById(id);
       const sufs = mine.includes(id) ? ["4", "3", "2", "1", "I", "A", "B", "C", "D"] : ["3", "2", "I"];
-      return { id, name: r.n, lat: r.la, lon: r.lo, auto: !mine.includes(id),
+      return { id, name: r.n, lat: r.la, lon: r.lo, state: r.st, auto: !mine.includes(id),
         layer_sets: [["IDR" + id + "4", 64], ["IDR" + id + "3", 128], ["IDR" + id + "2", 256], ["IDR" + id + "1", 512]].map(([lid, km]) => ({ id: lid, km })),
         products: sufs.map(s => {
           const pid = `IDR${id}${s}`, info = productInfo.get(pid) || {};
@@ -168,7 +168,7 @@ const WXP = (() => {
       products: [{ pid: NAT.PID, radar: NAT.PID, suffix: "N", label: "National mosaic", km: NAT.HALF, px: NAT.SIZE, type: "0", layer_id: null,
         available: true, error: null, frames: (frameIndex.get(NAT.PID) || new Map()).size }] });
     const fol = new Set(followed());
-    const all = DATA.radars.filter(r => !fol.has(r.id)).map(r => ({ id: r.id, name: r.n, lat: r.la, lon: r.lo })).sort((a, b) => a.name.localeCompare(b.name));
+    const all = DATA.radars.filter(r => !fol.has(r.id)).map(r => ({ id: r.id, name: r.n, lat: r.la, lon: r.lo, state: r.st })).sort((a, b) => a.name.localeCompare(b.name));
     return { radars, all_radars: all, home: { name: h.name, lat: h.lat, lon: h.lon }, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Perth",
       retention_hours: 1, poll_seconds: 120, auth: false, webcams: false, ltg_alert_km: 15, phone: true, home_unset: !!h.unset };
   }

@@ -1,6 +1,7 @@
 """All-Australia radar mosaic.
 
-Every BoM radar has a 512 km composite product (IDRxx1). We poll each one's loop page, keep the newest
+Every BoM radar has a 512 km composite product (IDRxx1). We take the newest frame of each (from BoM's
+FTP feed, or each radar's loop page when FTP is unreachable), keep the newest
 frame, and every 10 minutes stitch them into one national image on the same flat-earth (sinusoidal)
 projection the rest of wxdeck uses, centred on the middle of Australia. Where radars overlap, the
 strongest echo wins. Output frames look exactly like a BoM reflectivity image (same 15-colour palette),
@@ -135,6 +136,45 @@ async def radar_ids(client, bom, data_dir: Path | None = None):
         raise
 
 
+async def poll_once_ftp(listing: list, sites: dict, frames_dir: Path):
+    """Newest 512 km (else 256 km) frame of every radar on BoM's FTP feed."""
+    from . import bomftp
+    newest: dict = {}
+    for n in listing:
+        m = bomftp.FRAME_NAME.match(n)
+        if not m or m.group(1)[-1] not in "12" or not m.group(1)[3:-1].isdigit():
+            continue
+        rid, suf = m.group(1)[3:-1], m.group(1)[-1]
+        cur = newest.get((rid, suf))
+        if cur is None or n > cur:
+            newest[(rid, suf)] = n
+    ids = sorted({rid for rid, _ in newest}, key=int)
+    if len(ids) >= 20:
+        (frames_dir.parent / "national_radars.json").write_text(json.dumps(ids))
+    for rid in ids:
+        suf = "1" if (rid, "1") in newest else "2"
+        site = sites.get(rid)
+        if not site:
+            continue                       # a radar wxdeck has no position for (new site): skip until added
+        pid = f"IDR{rid}{suf}"
+        info = state["radars"].setdefault(rid, {"id": rid})
+        info.update(suffix=suf, lat=site["lat"], lon=site["lon"], km=512 if suf == "1" else 256, name=site["name"], pid=pid)
+        name = newest[(rid, suf)]
+        dest = frames_dir / pid / name
+        if dest.exists():
+            continue
+        try:
+            b = await bomftp.aget(f"{bomftp.RADAR_DIR}/{name}")
+        except Exception as e:
+            log.warning("national FTP %s failed: %s", name, e)
+            continue
+        if b[:4] == b"\x89PNG":
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_suffix(".part")
+            tmp.write_bytes(b)
+            tmp.replace(dest)
+
+
 async def poll_once(client, bom, frames_dir: Path):
     ids = await radar_ids(client, bom, frames_dir.parent)
     for rid in ids:
@@ -208,11 +248,15 @@ def build_mosaic(frames_dir: Path, slot: datetime, window_min=15):
     return buf.getvalue(), used
 
 
-async def run(client, bom, frames_dir: Path, every_s: int):
+async def run(client, bom, frames_dir: Path, every_s: int, listing_fn=None, sites=None):
     while True:
         start = time.time()
         try:
-            await poll_once(client, bom, frames_dir)
+            listing = await listing_fn() if listing_fn else None
+            if listing is not None:
+                await poll_once_ftp(listing, sites or {}, frames_dir)
+            else:
+                await poll_once(client, bom, frames_dir)
             now = datetime.now(timezone.utc)
             stamp = now.replace(minute=now.minute - now.minute % 5, second=0, microsecond=0)
             for s in (stamp,):

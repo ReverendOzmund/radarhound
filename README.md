@@ -149,6 +149,7 @@ Edit the `environment:` block in docker-compose.yml, then run `docker compose up
 | RADARS | BoM radar numbers, comma separated. 70 Perth/Serpentine, 79 Watheroo, 58 South Doodlakine, 31 Albany |
 | PRODUCTS | 4=64km 3=128km 2=256km 1=512km I=Doppler wind A/B/C/D=rainfall 5min/1h/since 9am/24h |
 | POLL_SECONDS | How often to check BoM (default 120) |
+| BOM_SOURCE | Where BoM data comes from: `auto` (default: BoM's anonymous FTP feed, falling back to the website if FTP is blocked on your network), `ftp` or `web`. BoM blocks busy addresses on its website with 403 errors; FTP is the channel BoM offers for automated access, and one folder listing covers every radar |
 | RETENTION_HOURS | How long frames are kept on disk (default 48) |
 | STATIONS | BoM obs as PRODUCT.WMO. Perth 94608, Perth Airport 94151, Rottnest 94602, Jandakot 94609, Swanbourne 94614, Pearce 94612, Mandurah 94605 (all IDW60901) |
 | HOME_NAME / HOME_LAT / HOME_LON | Your point for forecasts and distance/bearing readouts |
@@ -160,7 +161,7 @@ Edit the `environment:` block in docker-compose.yml, then run `docker compose up
 | NATIONAL | on/off: the all-Australia mosaic and seamless map (default on) |
 | NATIONAL_POLL_SECONDS | How often the national mosaic is rebuilt (default 360) |
 | WXDECK_WARNINGS | on/off: wxdeck's own automated warnings and watches (default on) |
-| WARNINGS_FEED | BoM warnings RSS for your state: IDZ00060.warnings_wa (WA), IDZ00054.warnings_nsw, IDZ00059.warnings_vic, IDZ00056.warnings_qld, IDZ00057.warnings_sa, IDZ00058.warnings_tas, IDZ00055.warnings_nt, IDZ00085.warnings_act |
+| WARNINGS_FEED | Your state's BoM warnings (from FTP warning products, or the website RSS): IDZ00060.warnings_wa (WA), IDZ00054.warnings_nsw, IDZ00059.warnings_vic, IDZ00056.warnings_qld, IDZ00057.warnings_sa, IDZ00058.warnings_tas, IDZ00055.warnings_nt, IDZ00085.warnings_act |
 | BOM_AREAS | Extra BoM district names that count as "near home" for alerts, comma separated (e.g. `lower west, perth metropolitan`) |
 | OBS_MAP_PRODUCT | BoM state-wide latest observations for the station map: IDW60920 (WA); IDN/IDV/IDQ/IDS/IDT/IDD60920 elsewhere |
 | OBS_SOUNDING_STATION | Radiosonde station for observed soundings (default 94610, Perth Airport) |

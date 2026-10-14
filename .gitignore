@@ -17,5 +17,5 @@ __pycache__/
 *.pyc
 
 # local data and secrets
-data/
+/data/
 .env

@@ -25,7 +25,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import archive, derived, extras, himawari, lightning, national, nowcast, satellite, speech, verify, warnings_engine as wxw
+from . import archive, bomftp, bomwarn, derived, extras, himawari, lightning, national, nowcast, satellite, speech, verify, warnings_engine as wxw
 from zoneinfo import ZoneInfo
 import numpy as np
 
@@ -38,6 +38,10 @@ def env_list(name, default):
     return [x.strip() for x in os.getenv(name, default).split(",") if x.strip()]
 
 BOM = os.getenv("BOM_BASE", "https://reg.bom.gov.au")
+# where BoM data (radar, warnings, observations) comes from: "ftp" (BoM's anonymous FTP feed, the channel
+# BoM offers for automated access), "web" (the website, which blocks busy addresses with 403s) or "auto"
+# (FTP, falling back to the website while FTP is unreachable)
+RADAR_SOURCE = os.getenv("BOM_SOURCE", os.getenv("RADAR_SOURCE", "auto")).lower()
 RADARS = env_list("RADARS", "70")
 PRODUCTS = env_list("PRODUCTS", "4,3,2,1,I,A,B,C,D")
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "120"))
@@ -115,6 +119,11 @@ PRODUCT_LABELS = {
     "C": "Rain since 9am", "D": "Rain 24 h",
 }
 KM_DIGIT = {64: "4", 128: "3", 256: "2", 512: "1"}
+SUFFIX_KM = {"4": 64, "3": 128, "2": 256, "1": 512, "I": 128, "A": 128, "B": 128, "C": 128, "D": 128}
+SUFFIX_TYPE = {"I": "2", "A": "1", "B": "1", "C": "1", "D": "1"}      # 0 reflectivity, 1 rainfall, 2 Doppler
+# every BoM radar's name and position (the FTP feed only has the images)
+SITES = {r["id"]: {"id": r["id"], "name": r["n"], "lat": r["la"], "lon": r["lo"], "state": r.get("st")}
+         for r in json.loads((Path(__file__).parent / "radar_sites.json").read_text())}
 LAYER_NAMES = ("background", "topography", "range", "locations")
 FRAME_RE = re.compile(r"^([A-Z]{3}\w*)\.T\.(\d{12})\.png$")
 
@@ -197,7 +206,14 @@ async def ensure_layers(client, layer_id: str):
             continue
         if time.time() - _layer_missing.get(p.name, 0) < 86400:
             continue                      # don't re-ask BoM for a file it doesn't have every poll cycle
-        b = await fetch_bytes(client, f"{BOM}/products/radar_transparencies/{layer_id}.{name}.png")
+        b = None
+        if RADAR_SOURCE != "web" and time.time() >= _ftp_down_until:
+            try:
+                b = await bomftp.aget(f"{bomftp.TRANSP_DIR}/{layer_id}.{name}.png")
+            except Exception:
+                b = None
+        if not (b and is_png(b)):
+            b = await fetch_bytes(client, f"{BOM}/products/radar_transparencies/{layer_id}.{name}.png")
         if b and is_png(b):
             write_atomic(p, b)
         else:
@@ -205,7 +221,7 @@ async def ensure_layers(client, layer_id: str):
         await asyncio.sleep(0.2)
 
 
-async def poll_product(client, rid: str, suffix: str):
+async def poll_product(client, rid: str, suffix: str, listing=None):
     pid = f"IDR{rid}{suffix}"
     info = products.setdefault(pid, {
         "pid": pid, "radar": rid, "suffix": suffix,
@@ -213,6 +229,12 @@ async def poll_product(client, rid: str, suffix: str):
         "km": None, "type": None, "layer_id": None,
         "available": False, "error": None, "last_ok": None,
     })
+    site = SITES.get(rid)
+    rad = radars.setdefault(rid, {"id": rid, "name": site["name"] if site else f"Radar {rid}",
+                                  "lat": site["lat"] if site else None, "lon": site["lon"] if site else None})
+    if listing is not None:
+        await poll_product_ftp(client, info, rad, listing)
+        return
     try:
         r = await client.get(f"{BOM}/products/{pid}.loop.shtml")
         if r.status_code != 200:
@@ -231,10 +253,9 @@ async def poll_product(client, rid: str, suffix: str):
             info["layer_id"] = f"IDR{rid}{KM_DIGIT.get(info['km'], '3')}"
         if typ:
             info["type"] = typ.group(1)
-        rad = radars.setdefault(rid, {"id": rid, "name": f"Radar {rid}", "lat": None, "lon": None})
         if lat and lon:
             rad["lat"], rad["lon"] = float(lat.group(1)), float(lon.group(1))
-        if title and suffix in "4321":
+        if title and suffix in "4321" and not site:
             rad["name"] = title.group(1)
 
         if not names:
@@ -257,6 +278,78 @@ async def poll_product(client, rid: str, suffix: str):
     except Exception as e:  # keep polling other products
         info.update(error=str(e))
         log.warning("poll %s failed: %s", pid, e)
+
+
+FTP_MAX_NEW = 36           # at most this many frames per product per cycle (3 hours of 5-minute frames)
+_ftp_down_until = 0.0
+
+
+async def radar_listing():
+    """This cycle's file list of BoM's FTP radar folder, or None to use the radar web pages instead."""
+    global _ftp_down_until
+    if RADAR_SOURCE == "web" or (RADAR_SOURCE == "auto" and time.time() < _ftp_down_until):
+        return None
+    try:
+        return await bomftp.alist()
+    except Exception as e:
+        if RADAR_SOURCE == "ftp":
+            log.warning("BoM FTP listing failed: %s", e)
+            return []
+        _ftp_down_until = time.time() + 600
+        log.warning("BoM FTP unreachable (%s); using the radar web pages for 10 minutes", e)
+        return None
+
+
+async def bom_fwo(name: str) -> bytes:
+    """A BoM /fwo/ product (warnings RSS, state observations, warning text): FTP first, then the website."""
+    err = None
+    if RADAR_SOURCE != "web" and time.time() >= _ftp_down_until:
+        try:
+            return await bomftp.aget(f"{bomftp.FWO_DIR}/{name}")
+        except Exception as e:
+            err = e
+            if RADAR_SOURCE == "ftp":
+                raise
+    r = await app.state.http.get(f"{BOM}/fwo/{name}")
+    if r.status_code != 200 and err is not None:
+        raise RuntimeError(f"BoM FTP: {err}; website: HTTP {r.status_code}")
+    r.raise_for_status()
+    return r.content
+
+
+async def bom_warnings(feed: str):
+    """One state's current BoM warnings: built from the FTP feed's warning products (the website's RSS
+    isn't on FTP), or the website RSS when FTP isn't in use or hasn't loaded yet."""
+    if RADAR_SOURCE != "web" and (bomwarn.state["loaded"] or RADAR_SOURCE == "ftp"):
+        return bomwarn.items(feed)
+    return await extras.warnings(app.state.http, BOM, feed)
+
+
+def warning_feeds():
+    return ALL_WARNINGS if NATIONAL else [WARNINGS_FEED]
+
+
+async def poll_product_ftp(client, info: dict, rad: dict, listing: list):
+    pid, suffix = info["pid"], info["suffix"]
+    info["km"] = SUFFIX_KM.get(suffix, 128)
+    info["type"] = SUFFIX_TYPE.get(suffix, "0")
+    info["layer_id"] = f"IDR{info['radar']}{KM_DIGIT.get(info['km'], '3')}"
+    names = bomftp.frames_for(pid, listing)
+    if not names:
+        info.update(available=False, error="not on BoM's FTP feed")
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=RETENTION_HOURS)
+    todo = [n for n in names if not (FRAMES / pid / n).exists() and (frame_time(n) or cutoff) > cutoff][-FTP_MAX_NEW:]
+    try:
+        for n in todo:
+            b = await bomftp.aget(f"{bomftp.RADAR_DIR}/{n}")
+            if is_png(b):
+                write_atomic(FRAMES / pid / n, b)
+        await ensure_layers(client, info["layer_id"])
+        info.update(available=True, error=None, last_ok=datetime.now(timezone.utc).isoformat())
+    except Exception as e:
+        info.update(error=f"FTP: {e}", available=any((FRAMES / pid).glob("*.png")) if (FRAMES / pid).exists() else False)
+        log.warning("FTP poll %s failed: %s", pid, e)
 
 
 def prune():
@@ -301,9 +394,10 @@ def follow(rid: str, hours: float = 3):
 
 async def poll_now(rid: str):
     async with httpx.AsyncClient(headers=UA, timeout=20, follow_redirects=True) as client:
+        listing = await radar_listing()
         for suf in (PRODUCTS if rid in RADARS else AUTO_PRODUCTS):
             try:
-                await poll_product(client, rid, suf)
+                await poll_product(client, rid, suf, listing)
             except Exception as e:
                 log.warning("poll %s%s failed: %s", rid, suf, e)
         for digit in "4321":
@@ -319,13 +413,14 @@ async def poller():
             start = time.time()
             # every step is guarded: one network hiccup (Wi-Fi drop, PC waking from sleep, BoM refusing a
             # request) must never stop the poller, the warning engine or pruning for good
+            listing = await radar_listing()
             for rid in followed():
                 for suf in (PRODUCTS if rid in RADARS else AUTO_PRODUCTS):
                     try:
-                        await poll_product(client, rid, suf)
+                        await poll_product(client, rid, suf, listing)
                     except Exception as e:
                         log.warning("poll IDR%s%s failed: %s", rid, suf, e)
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.3 if listing is None else 0)
                 for digit in "4321":  # basemaps for every range, used by the raw volume viewer
                     try:
                         await ensure_layers(client, f"IDR{rid}{digit}")
@@ -453,8 +548,9 @@ async def lifespan(app):
             log.warning("alert voice download failed (alerts will use the device's own voice): %s", e)
     tasks = [
         asyncio.create_task(voice_bg()),
-        *( [asyncio.create_task(national.run(app.state.http, BOM, FRAMES, NATIONAL_POLL))] if NATIONAL else []),
+        *( [asyncio.create_task(national.run(app.state.http, BOM, FRAMES, NATIONAL_POLL, radar_listing, SITES))] if NATIONAL else []),
         asyncio.create_task(poller()),
+        *( [asyncio.create_task(bomwarn.run(DATA, warning_feeds))] if RADAR_SOURCE != "web" else []),
         asyncio.create_task(lightning.collector(app.state.strikes, lightning_centres)),
     ]
     yield
@@ -621,9 +717,12 @@ async def get_config():
                     "products": [{"pid": national.PID, "radar": national.PID, "suffix": "N", "label": "National mosaic",
                                   "km": national.HALF_KM, "px": national.SIZE, "type": "0", "layer_id": None,
                                   "available": n > 0, "error": None if n else "building the first mosaic", "frames": n}]})
-    all_radars = sorted(({"id": k, "name": v.get("name") or k, "lat": v["lat"], "lon": v["lon"]}
-                         for k, v in national.state["radars"].items() if v.get("lat") is not None and k not in followed()),
-                        key=lambda r: r["name"])
+    on = set(followed())
+    for r in out:
+        if r["id"] in SITES:
+            r["state"] = SITES[r["id"]]["state"]
+    all_radars = sorted(({"id": k, "name": v["name"], "lat": v["lat"], "lon": v["lon"], "state": v["state"]}
+                         for k, v in SITES.items() if k not in on), key=lambda r: r["name"])
     return {
         "radars": out, "all_radars": all_radars, "home": HOME, "tz": TZ_NAME,
         "retention_hours": RETENTION_HOURS, "poll_seconds": POLL_SECONDS,
@@ -676,6 +775,30 @@ async def get_loop(pid: str, names: str):
     return Response(bytes(out), media_type="application/octet-stream", headers={"Cache-Control": "max-age=60"})
 
 
+OBS_SEEN: dict = {}          # station id -> {time: row}: history kept from the state observations file
+
+
+async def obs_from_state(st: str, prod: str, wmo: str):
+    state_prod = prod[:3] + "60920"                     # IDW60901 (one station) -> IDW60920 (whole state)
+    xml = await cached(f"obsxml|{state_prod}", 240, lambda: bom_fwo(f"{state_prod}.xml"))
+    for a, tm, v in extras.station_rows(xml):
+        if a.get("wmo-id") != wmo or not tm:
+            continue
+        row = {"t": datetime.fromisoformat(tm.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat(),
+               "temp": _num(v.get("air_temperature")), "app": _num(v.get("apparent_temp")),
+               "dew": _num(v.get("dew_point")), "rh": _num(v.get("rel-humidity")),
+               "press": _num(v.get("msl_pres")), "wind": _num(v.get("wind_spd_kmh")),
+               "gust": _num(v.get("gust_kmh")), "dir": v.get("wind_dir"), "rain": _num(v.get("rainfall"))}
+        seen = OBS_SEEN.setdefault(st, {})
+        seen[row["t"]] = row
+        for k in sorted(seen)[:-150]:
+            del seen[k]
+        hist = [seen[k] for k in sorted(seen)]
+        return {"id": st, "name": a.get("description") or a.get("stn-name"), "lat": _num(a.get("lat")),
+                "lon": _num(a.get("lon")), "latest": hist[-1], "history": hist}
+    raise RuntimeError(f"station {wmo} not in {state_prod}")
+
+
 @app.get("/api/obs")
 async def get_obs():
     async def load():
@@ -683,11 +806,18 @@ async def get_obs():
         for st in STATIONS:
             prod, wmo = st.split(".", 1)
             try:
+                if RADAR_SOURCE == "ftp":
+                    raise RuntimeError("FTP only")
                 r = await app.state.http.get(f"{BOM}/fwo/{prod}/{prod}.{wmo}.json")
                 r.raise_for_status()
                 rows = r.json()["observations"]["data"]
             except Exception as e:
-                result.append({"id": st, "error": str(e)})
+                # the per-station JSON is website-only: use the state observations file from the FTP feed
+                # and build the history from what wxdeck has seen itself
+                try:
+                    result.append(await obs_from_state(st, prod, wmo))
+                except Exception as e2:
+                    result.append({"id": st, "error": f"{e}; FTP: {e2}"})
                 continue
             hist = []
             for x in reversed(rows):
@@ -1256,7 +1386,7 @@ async def get_obsmap(scope: str = "state"):
         out, failed = [], 0
         for p in prods:
             try:
-                out += await extras.station_obs(app.state.http, BOM, p)
+                out += await extras.station_obs(app.state.http, BOM, p, bom_fwo)
             except Exception as e:
                 failed += 1
                 log.warning("station obs %s failed: %s", p, e)
@@ -1279,7 +1409,7 @@ async def get_warnings(scope: str = "state"):
         out, failed = [], 0
         for f in feeds:
             try:
-                out += await extras.warnings(app.state.http, BOM, f)
+                out += await bom_warnings(f)
             except Exception as e:
                 failed += 1
                 log.warning("warnings feed %s failed: %s", f, e)
@@ -1400,7 +1530,7 @@ async def bom_severe():
     """BoM warnings worth an alert (severe thunderstorm, severe weather, cyclone, tsunami, fire, heatwave,
     moderate or major flood), each with its page text."""
     try:
-        bom = await cached("warnings|state", 300, lambda: extras.warnings(app.state.http, BOM, WARNINGS_FEED))
+        bom = await cached("warnings|state", 300, lambda: bom_warnings(WARNINGS_FEED))
     except Exception:
         return []
     out = []
@@ -1414,9 +1544,11 @@ async def bom_severe():
             continue
         kind = "severe weather" if "severe weather" in low else "flood" if "flood" in low else "thunderstorm" if "thunderstorm" in low else "other"
         try:
-            body = await cached(f"wtext|{b['link']}", 600, lambda: extras.warning_text(app.state.http, b["link"]))
+            body = await cached(f"wtext|{b['link']}", 600, lambda: extras.warning_text(app.state.http, b["link"], bom_fwo))
         except Exception:
             body = ""
+        if b.get("areas"):                       # FTP warnings list their districts directly
+            body = (body + " Districts: " + ", ".join(b["areas"])).strip()
         out.append({"id": "bom-" + hashlib.sha1((b["link"] + "|" + title).encode()).hexdigest()[:12], "title": title,
                     "kind": kind, "link": b["link"], "pub": b.get("pub"), "body": body})
     return out
@@ -1509,7 +1641,7 @@ async def get_alerts(lat: float | None = None, lon: float | None = None, near: f
                               + _speakable(w["text"])})
     # damaging wind gusts actually measured at stations (90 km/h or more, last 40 minutes)
     try:
-        stations = await cached("obsmap|state", 600, lambda: extras.station_obs(app.state.http, BOM, OBS_MAP_PRODUCT))
+        stations = await cached("obsmap|state", 600, lambda: extras.station_obs(app.state.http, BOM, OBS_MAP_PRODUCT, bom_fwo))
     except Exception:
         stations = []
     for st in stations:
