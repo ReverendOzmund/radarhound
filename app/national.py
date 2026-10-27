@@ -3,7 +3,7 @@
 Every BoM radar has a 512 km composite product (IDRxx1). We take the newest frame of each (from BoM's
 FTP feed, or each radar's loop page when FTP is unreachable), keep the newest
 frame, and every 10 minutes stitch them into one national image on the same flat-earth (sinusoidal)
-projection the rest of wxdeck uses, centred on the middle of Australia. Where radars overlap, the
+projection the rest of Radarhound uses, centred on the middle of Australia. Where radars overlap, the
 strongest echo wins. Output frames look exactly like a BoM reflectivity image (same 15-colour palette),
 so the browser decodes, recolours and tracks cells on them like any other radar loop.
 """
@@ -21,7 +21,7 @@ import httpx
 import numpy as np
 from PIL import Image
 
-log = logging.getLogger("wxdeck.national")
+log = logging.getLogger("radarhound.national")
 
 LAT0, LON0 = -27.0, 133.5          # centre of the national view
 HALF_KM = 2560
@@ -155,7 +155,7 @@ async def poll_once_ftp(listing: list, sites: dict, frames_dir: Path):
         suf = "1" if (rid, "1") in newest else "2"
         site = sites.get(rid)
         if not site:
-            continue                       # a radar wxdeck has no position for (new site): skip until added
+            continue                       # a radar Radarhound has no position for (new site): skip until added
         pid = f"IDR{rid}{suf}"
         info = state["radars"].setdefault(rid, {"id": rid})
         info.update(suffix=suf, lat=site["lat"], lon=site["lon"], km=512 if suf == "1" else 256, name=site["name"], pid=pid)

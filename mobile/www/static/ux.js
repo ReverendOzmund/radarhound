@@ -1,4 +1,4 @@
-/* wxdeck: the friendly layer. Everything nerdy stays, but the page answers the everyday question first
+/* Radarhound: the friendly layer. Everything nerdy stays, but the page answers the everyday question first
    ("is it going to rain on me?"), explains what each product shows, hides depth behind a detail level,
    and gives fast paths: a command search (Ctrl+K), share links and a first-run tour.
    Ideas borrowed from: Apple Weather / RainViewer (minute rain nowcast), BoM app (rain wording, rain
@@ -82,8 +82,8 @@ function bindUxSettings() {
   $("paletteBtn").onclick = openPalette;
   $("explainChip").onclick = () => explain();
   $("setExport").onclick = () => {
-    const blob = new Blob([JSON.stringify({ wxdeck: 1, settings: S.settings, customModes: store.get("customModes", []), palettes: store.get("palettes", null) }, null, 2)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "wxdeck-settings.json"; a.click();
+    const blob = new Blob([JSON.stringify({ radarhound: 1, settings: S.settings, customModes: store.get("customModes", []), palettes: store.get("palettes", null) }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "radarhound-settings.json"; a.click();
   };
   $("setImport").onclick = () => $("setFile").click();
   $("setFile").onchange = async e => {
@@ -91,7 +91,7 @@ function bindUxSettings() {
     if (!f) return;
     try {
       const j = JSON.parse(await f.text());
-      if (!j.settings) throw new Error("not a wxdeck settings file");
+      if (!j.settings) throw new Error("not a Radarhound settings file");
       store.set("settings", j.settings);
       if (j.customModes) store.set("customModes", j.customModes);
       if (j.palettes) store.set("palettes", j.palettes);
@@ -306,7 +306,7 @@ function pinSummary(fc) {
       const mt = S.settings.metar && near(S.metar.list, 30);
       if (mt) rows.push(`<div class="metar"><b>${esc(mt[1].icaoId)}</b> ${mt[0].toFixed(0)} km: <code>${esc(mt[1].rawOb || "")}</code></div>`);
       const cam = S.settings.cams && near(S.cams.list, 15);
-      if (cam && cam[1].preview) rows.push(`<a class="cam" href="${esc(cam[1].url || cam[1].preview)}" target="_blank" rel="noopener"><img src="${esc(cam[1].preview)}" alt="${esc(cam[1].title || "Webcam")}" loading="lazy"><span>${esc(cam[1].title || "Webcam")}, ${cam[0].toFixed(0)} km</span></a>`);
+      if (cam && cam[1].preview) rows.push(`<a class="cam" href="${esc(/^https?:\/\//.test(cam[1].url || "") ? cam[1].url : cam[1].preview)}" target="_blank" rel="noopener"><img src="${esc(cam[1].preview)}" alt="${esc(cam[1].title || "Webcam")}" loading="lazy"><span>${esc(cam[1].title || "Webcam")}, ${cam[0].toFixed(0)} km</span></a>`);
       box.innerHTML = rows.join("") || `<div class="dim">No forecast for this spot right now.</div>`;
     });
   };
@@ -320,7 +320,7 @@ const EXPLAIN = {
     note: "Beams rise with distance: far from the radar it looks over the top of low rain." },
   dopp: { t: "Doppler wind", what: "Wind speed towards or away from the radar, in 10 km/h steps (BoM's live Doppler image).",
     read: "Blue/green-blue: blowing towards the radar. Yellow to red: away from it. White: across the beam (or calm). Speed is only the part along the beam.",
-    watch: "Strong towards and away colours side by side (a couplet) inside a storm can mean rotation. wxdeck marks them with rings when Live Doppler couplets is on.",
+    watch: "Strong towards and away colours side by side (a couplet) inside a storm can mean rotation. Radarhound marks them with rings when Live Doppler couplets is on.",
     note: "Only works within about 110 km of the radar and only where it's raining." },
   rain: { t: "Rainfall totals", what: "BoM's radar-estimated rain over the period (5 min, 1 h, since 9 am, 24 h).",
     read: "Colours are millimetres of rain; the legend shows the bands.", watch: "Bullseyes of 50+ mm in an hour can mean flash flooding.", note: "Radar estimates; gauges can differ a lot under hail or bright band." },
@@ -421,7 +421,7 @@ setInterval(() => {
   if (h.get("s") && SAT_DEFS[h.get("s")]) st.satLayer = h.get("s");
   const ll = (h.get("ll") || "").split(",").map(Number);
   if (ll.length === 2 && ll.every(Number.isFinite)) {
-    try { sessionStorage.setItem("wxdeck.zoomTo", JSON.stringify({ lat: ll[0], lon: ll[1], km: Math.max(5, Math.min(3000, +h.get("z") || 120)) })); } catch { /* private */ }
+    try { sessionStorage.setItem("radarhound.zoomTo", JSON.stringify({ lat: ll[0], lon: ll[1], km: Math.max(5, Math.min(3000, +h.get("z") || 120)) })); } catch { /* private */ }
   }
   save();
 })();
@@ -460,7 +460,7 @@ function paletteItems() {
   for (const [k, D] of Object.entries(SAT_DEFS)) add("Satellite", D.name, () => { S.settings.satLayer = k; save(); $("satSel").value = k; S.sat.current = null; setView(S.settings.view === "radar" ? "both" : S.settings.view); renderLegend(); onTimeChanged(); });
   const tog = (label, id) => add("Layer", `${$(id).checked ? "Hide" : "Show"} ${label}`, () => $(id).click());
   tog("station obs", "lyrStations"); tog("airport obs (METAR)", "lyrMetar"); tog("highways", "lyrRoads"); tog("fires", "lyrFires");
-  tog("towns", "lyrLoc"); tog("range rings", "lyrRange"); tog("thunder rings", "ltgRings"); tog("wxdeck warnings", "lyrWxw"); tog("model watches", "lyrWatches");
+  tog("towns", "lyrLoc"); tog("range rings", "lyrRange"); tog("thunder rings", "ltgRings"); tog("Radarhound warnings", "lyrWxw"); tog("model watches", "lyrWatches");
   add("Layer", `${S.settings.lightning ? "Hide" : "Show"} lightning`, () => $("ltgChip").click());
   add("Layer", `${cellsOn() ? "Hide" : "Show"} storm cells`, () => $("cellsChip").click());
   for (const [lv, n] of Object.entries(LEVELS)) add("Detail level", n, () => applyLevel(lv));
@@ -548,8 +548,8 @@ document.addEventListener("keydown", e => {
 
 // ---------------------------------------------------------------- first-run tour
 const TOUR = [
-  () => `<h2>Welcome to wxdeck</h2>
-    <p>Live BoM radar, Doppler, lightning, satellite and forecasts from your own server, plus wxdeck's own storm warnings.</p>
+  () => `<h2>Welcome to Radarhound</h2>
+    <p>Live BoM radar, Doppler, lightning, satellite and forecasts from your own server, plus Radarhound's own storm warnings.</p>
     <p><b>How much detail do you want?</b> You can change this any time under Layers and settings, More.</p>
     <div class="tour-levels">
       <button data-lv="simple"><b>Simple</b><span>Rain radar, lightning, warnings and the forecast. Clean and quick.</span></button>
@@ -604,14 +604,14 @@ async function loadVerify() {
     <td>${w.bom.length ? "✔ BoM" : "–"}${w.reports.length ? ` · ${w.reports.length} report${w.reports.length > 1 ? "s" : ""}` : ""}</td></tr>`).join("");
   $("verifyBody").innerHTML = `
     <div class="verify-stats">
-      <div><b>${s.warnings}</b><span>wxdeck warnings (30 days)</span></div>
+      <div><b>${s.warnings}</b><span>Radarhound warnings (30 days)</span></div>
       <div><b>${pct(s.with_bom, s.warnings)}</b><span>also warned by BoM</span></div>
       <div><b>${pct(s.with_reports, s.warnings)}</b><span>with a storm report</span></div>
-      <div><b>${s.bom_without_wxdeck}</b><span>BoM storm warnings wxdeck didn't match</span></div>
+      <div><b>${s.bom_without_radarhound}</b><span>BoM storm warnings Radarhound didn't match</span></div>
     </div>
     ${rows ? `<div class="verify-scroll"><table class="verify-table"><thead><tr><th>Issued</th><th>Type</th><th>Area</th><th>Lasted</th><th>Peak</th><th>Verified</th></tr></thead><tbody>${rows}</tbody></table></div>`
-      : `<p class="dim">No wxdeck warnings yet. Every warning is logged here as it happens.</p>`}
-    ${r.bom_missed.length ? `<details><summary>BoM thunderstorm warnings without a wxdeck warning (${r.bom_missed.length})</summary><ul>${r.bom_missed.slice(0, 20).map(b => `<li>${esc(b.title)} <span class="dim">${fmtDate.format(new Date(b.first))}</span></li>`).join("")}</ul></details>` : ""}
+      : `<p class="dim">No Radarhound warnings yet. Every warning is logged here as it happens.</p>`}
+    ${r.bom_missed.length ? `<details><summary>BoM thunderstorm warnings without a Radarhound warning (${r.bom_missed.length})</summary><ul>${r.bom_missed.slice(0, 20).map(b => `<li>${esc(b.title)} <span class="dim">${fmtDate.format(new Date(b.first))}</span></li>`).join("")}</ul></details>` : ""}
     <p class="dim">Matching is by town names and storm reports inside the warning area. Log a report from a pinned point to help.</p>`;
 }
 
@@ -707,7 +707,7 @@ function uxBoot() {
     S.settings.legendUnit = order[(order.indexOf(u) + 1) % 3]; save(); renderLegend();
   });
   if (new URLSearchParams(location.search).has("kiosk")) startKiosk();
-  const lv = S.settings.uiLevel || (UX_NEW ? "simple" : "pro");      // people already using wxdeck keep everything
+  const lv = S.settings.uiLevel || (UX_NEW ? "simple" : "pro");      // people already using Radarhound keep everything
   applyLevel(lv);
   if (S.settings.alertWhere === "me") watchMe(false);
   const waitCfg = setInterval(() => {

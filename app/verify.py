@@ -1,10 +1,10 @@
-"""Verification log: every wxdeck warning, what the storm did while it was in force, and whether BoM
+"""Verification log: every Radarhound warning, what the storm did while it was in force, and whether BoM
 warned for the same area. Used to tune the warning thresholds against real Australian storms.
 
 A warning is one storm event (the same event id across radar handovers). For each it records the peak
 core, rotation and lightning, the towns covered, storm reports inside the polygon, and any BoM severe
 thunderstorm warning naming one of those towns. BoM thunderstorm warnings are logged too, so the page
-can list storms BoM warned for that wxdeck missed.
+can list storms BoM warned for that Radarhound missed.
 """
 import json
 import sqlite3
@@ -34,7 +34,7 @@ def _in_poly(lat, lon, poly):
 
 
 def record(data_dir: Path, active: list, bom: list, reports: list):
-    """Called after every warning-engine cycle. `active` = wxdeck warnings, `bom` = [{id, title, text}]
+    """Called after every warning-engine cycle. `active` = Radarhound warnings, `bom` = [{id, title, text}]
     BoM thunderstorm/severe weather warnings currently out, `reports` = storm reports."""
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _db(data_dir) as c:
@@ -59,6 +59,8 @@ def record(data_dir: Path, active: list, bom: list, reports: list):
                     rt = datetime.fromisoformat(str(r.get("t")).replace("Z", "+00:00"))
                 except ValueError:
                     continue
+                if rt.tzinfo is None:                 # reports without a zone are taken as UTC
+                    rt = rt.replace(tzinfo=timezone.utc)
                 if issued - timedelta(minutes=15) <= rt <= datetime.now(timezone.utc) + timedelta(minutes=5) and _in_poly(r["lat"], r["lon"], poly):
                     rp.add(json.dumps({"kind": r.get("kind"), "size": r.get("size"), "t": r.get("t")}, sort_keys=True))
             upgraded = "TOR" if (row and row[6] != "TOR" and w["type"] == "TOR") else None
@@ -94,7 +96,7 @@ def summary(data_dir: Path, days: int = 30):
         "with_bom": sum(1 for w in out if w["bom"]),
         "with_reports": sum(1 for w in out if w["reports"]),
         "bom_thunderstorm_warnings": len(thunder),
-        "bom_without_wxdeck": len(missed),
+        "bom_without_radarhound": len(missed),
         "median_minutes": sorted(w["minutes"] for w in out)[n // 2] if n else None,
     }
     return {"days": days, "stats": stats, "warnings": out[:300], "bom_missed": missed[:100]}

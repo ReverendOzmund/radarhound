@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>wxdeck</title>
+<title>Radarhound</title>
 <style>
   :root { --bg: #0f1a20; --panel: #15232b; --line: #263b44; --text: #d6e2e4; --dim: #8aa0a6; --amber: #f2a93b; --warm: #ef6f5c; color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -36,10 +36,10 @@
 </style>
 </head>
 <body>
-  <p class="brand">wxdeck</p>
+  <p class="brand"><img src="static/logo.svg" alt="" width="44" height="44" style="vertical-align:-9px;margin-right:10px">Radarhound</p>
   <p class="sub">Radar, satellite, lightning and storm tools.</p>
   <div class="modes" role="tablist">
-    <button class="mode on" id="mServer" type="button"><b>My wxdeck server</b><span>Everything: 48 h history, raw volumes, alerts from the server</span></button>
+    <button class="mode on" id="mServer" type="button"><b>My Radarhound server</b><span>Everything: 48 h history, raw volumes, alerts from the server</span></button>
     <button class="mode" id="mPhone" type="button"><b>Run on this phone</b><span>No server needed: live radar, Doppler, lightning, forecasts and warnings</span></button>
   </div>
   <div class="card">
@@ -48,7 +48,7 @@
         Server-only: 48-hour history, raw volume scans, raw satellite bands and the verification log. With the app closed, alerts cover BoM warnings and lightning nearby.</p>
     </div>
     <div id="serverBox">
-    <label for="url">Your wxdeck server</label>
+    <label for="url">Your Radarhound server</label>
     <input id="url" type="url" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.50:8686">
     <div class="recent" id="recent"></div>
     <label for="pw" style="margin-top:14px">Password <span style="opacity:.7">(only if your server has one)</span></label>
@@ -74,11 +74,11 @@
   <div class="tips">
     <p><b>At home:</b> use the server's address on your Wi-Fi, for example <code>http://192.168.1.50:8686</code>.</p>
     <p><b>Away from home:</b> install Tailscale on the server and this phone, then use the server's Tailscale address, for example <code>https://myserver.tail1234.ts.net</code>. The https address also unlocks the "Me" location button.</p>
-    <p>To switch servers later, tap ⇄ at the top of wxdeck.</p>
+    <p>To switch servers later, tap ⇄ at the top of Radarhound.</p>
   </div>
 <script>
   const $ = id => document.getElementById(id);
-  const KEY = "wxdeck.server", RECENT = "wxdeck.recent";
+  const KEY = "radarhound.server", RECENT = "radarhound.recent";
   const norm = u => { u = (u || "").trim().replace(/\/+$/, ""); if (u && !/^https?:\/\//i.test(u)) u = "http://" + u; return u; };
   const recent = () => { try { return JSON.parse(localStorage.getItem(RECENT) || "[]"); } catch { return []; } };
   function showRecent() {
@@ -91,7 +91,7 @@
     try { await fetch(u + "/api/config", { mode: "no-cors", signal: ctl.signal, cache: "no-store" }); return true; }
     catch { return false; } finally { clearTimeout(t); }
   }
-  let mode = localStorage.getItem("wxdeck.mode") || "server";
+  let mode = localStorage.getItem("radarhound.mode") || "server";
   function setMode(m) {
     mode = m;
     $("mServer").classList.toggle("on", m === "server"); $("mPhone").classList.toggle("on", m === "phone");
@@ -108,25 +108,25 @@
     $("msg").className = "msg"; $("msg").textContent = `Connecting to ${u}…`;
     if (!(await reachable(u))) {
       $("msg").className = "msg err";
-      $("msg").innerHTML = `Couldn't reach that address. Check the phone is on the same network (or Tailscale is on), and that wxdeck is running.
+      $("msg").innerHTML = `Couldn't reach that address. Check the phone is on the same network (or Tailscale is on), and that Radarhound is running.
         <br><a href="#" id="tryPhone">Run on this phone instead</a>`;
       $("tryPhone").onclick = e => { e.preventDefault(); setMode("phone"); };
       return;
     }
     localStorage.setItem(KEY, u);
-    localStorage.setItem("wxdeck.mode", "server");
+    localStorage.setItem("radarhound.mode", "server");
     const prefs = { enabled: $("bg").checked, scope: $("scope").value, voice: $("voice").checked, bom: $("bom").checked,
                     near: +$("near").value, far: $("far").checked, loudSevere: $("loud").checked,
                     ltg: $("ltg").checked, arr: $("arr").checked, rain: $("rain").checked, where: $("where").value,
                     quietFrom: +$("qf").value, quietTo: +$("qt").value, briefHour: +$("brief").value };
-    localStorage.setItem("wxdeck.alertPrefs", JSON.stringify(prefs));
-    localStorage.setItem("wxdeck.key", $("pw").value);
+    localStorage.setItem("radarhound.alertPrefs", JSON.stringify(prefs));
+    localStorage.setItem("radarhound.key", $("pw").value);
     localStorage.setItem(RECENT, JSON.stringify([u, ...recent().filter(x => x !== u)].slice(0, 4)));
     const P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.WxAlerts;
     let res = null;
     try {
-      if (P) res = await P.start({ server: u, ...prefs, key: $("pw").value, askBattery: prefs.enabled && !localStorage.getItem("wxdeck.askedBattery") });
-      if (prefs.enabled) localStorage.setItem("wxdeck.askedBattery", "1");
+      if (P) res = await P.start({ server: u, ...prefs, key: $("pw").value, askBattery: prefs.enabled && !localStorage.getItem("radarhound.askedBattery") });
+      if (prefs.enabled) localStorage.setItem("radarhound.askedBattery", "1");
     } catch (e) { /* running in a normal browser */ }
     if (prefs.enabled && prefs.where === "me" && res && res.location === false && !auto) {
       $("msg").className = "msg err";
@@ -134,13 +134,13 @@
       $("lskip").onclick = e => { e.preventDefault(); location.replace(u + "/"); };
       return;
     }
-    if (prefs.enabled && res && res.notifications === false && !(auto === true && localStorage.getItem("wxdeck.noNotif"))) {
+    if (prefs.enabled && res && res.notifications === false && !(auto === true && localStorage.getItem("radarhound.noNotif"))) {
       // without notification permission the background alerts can't show or sound: say so instead of failing quietly
       $("msg").className = "msg err";
-      $("msg").innerHTML = `Notifications are turned off for wxdeck, so warnings can't reach you while the app is closed.
+      $("msg").innerHTML = `Notifications are turned off for Radarhound, so warnings can't reach you while the app is closed.
         <br><a href="#" id="nset">Turn notifications on</a> (then tap Connect again) or <a href="#" id="nskip">continue without them</a>.`;
       $("nset").onclick = e => { e.preventDefault(); P.openNotificationSettings(); };
-      $("nskip").onclick = e => { e.preventDefault(); localStorage.setItem("wxdeck.noNotif", "1"); location.replace(u + "/"); };
+      $("nskip").onclick = e => { e.preventDefault(); localStorage.setItem("radarhound.noNotif", "1"); location.replace(u + "/"); };
       return;
     }
     location.replace(u + "/");
@@ -153,20 +153,20 @@
   }
   async function startPhone(auto = false) {
     const prefs = prefsNow();
-    localStorage.setItem("wxdeck.alertPrefs", JSON.stringify(prefs));
-    localStorage.setItem("wxdeck.mode", "phone");
+    localStorage.setItem("radarhound.alertPrefs", JSON.stringify(prefs));
+    localStorage.setItem("radarhound.mode", "phone");
     const P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.WxAlerts;
     let res = null;
     try {
-      if (P) res = await P.start({ ...prefs, mode: "phone", server: null, askBattery: prefs.enabled && !localStorage.getItem("wxdeck.askedBattery") });
-      if (prefs.enabled) localStorage.setItem("wxdeck.askedBattery", "1");
+      if (P) res = await P.start({ ...prefs, mode: "phone", server: null, askBattery: prefs.enabled && !localStorage.getItem("radarhound.askedBattery") });
+      if (prefs.enabled) localStorage.setItem("radarhound.askedBattery", "1");
     } catch (e) { /* normal browser */ }
-    if (prefs.enabled && res && res.notifications === false && !(auto === true && localStorage.getItem("wxdeck.noNotif"))) {
+    if (prefs.enabled && res && res.notifications === false && !(auto === true && localStorage.getItem("radarhound.noNotif"))) {
       $("msg").className = "msg err";
-      $("msg").innerHTML = `Notifications are turned off for wxdeck, so warnings can't reach you while the app is closed.
+      $("msg").innerHTML = `Notifications are turned off for Radarhound, so warnings can't reach you while the app is closed.
         <br><a href="#" id="nset">Turn notifications on</a> (then tap Start again) or <a href="#" id="nskip">continue without them</a>.`;
       $("nset").onclick = e => { e.preventDefault(); P.openNotificationSettings(); };
-      $("nskip").onclick = e => { e.preventDefault(); localStorage.setItem("wxdeck.noNotif", "1"); location.replace("app.html"); };
+      $("nskip").onclick = e => { e.preventDefault(); localStorage.setItem("radarhound.noNotif", "1"); location.replace("app.html"); };
       return;
     }
     location.replace("app.html");
@@ -180,7 +180,7 @@
   const wantChange = new URLSearchParams(location.search).has("change");
   $("url").value = saved || "";
   try {
-    const pr = JSON.parse(localStorage.getItem("wxdeck.alertPrefs") || "{}");
+    const pr = JSON.parse(localStorage.getItem("radarhound.alertPrefs") || "{}");
     if ("enabled" in pr) {
       $("bg").checked = pr.enabled; $("scope").value = pr.scope || "near"; $("voice").checked = pr.voice !== false; $("bom").checked = pr.bom !== false;
       $("near").value = String(pr.near || 50); $("far").checked = pr.far !== false; $("loud").checked = !!pr.loudSevere;
@@ -188,7 +188,7 @@
       $("ltg").checked = pr.ltg !== false; $("arr").checked = pr.arr !== false; $("rain").checked = !!pr.rain; $("where").value = pr.where || "home";
     }
   } catch { }
-  $("pw").value = localStorage.getItem("wxdeck.key") || "";
+  $("pw").value = localStorage.getItem("radarhound.key") || "";
   showRecent();
   setMode(mode);
   if (!wantChange && (mode === "phone" || saved)) connect(true);

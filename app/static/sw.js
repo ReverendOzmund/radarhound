@@ -1,9 +1,10 @@
-// wxdeck service worker: keeps the app shell so the app opens fast and works through network blips.
-// The page itself is fetched fresh when the server answers within 1.5 s (so updates show straight away),
-// otherwise the saved copy is used. Live data always comes from the network.
-const CACHE = "wxdeck-shell";
+// Radarhound service worker: keeps the app shell so the app opens offline and through network blips.
+// The page itself always comes from the server when it answers (a saved copy is only used when the
+// network fails, so old HTML never runs with newer scripts). Live data always comes from the network.
+const CACHE = "radarhound-shell";
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.add("/")).catch(() => {}).then(() => self.skipWaiting())));
-self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
+self.addEventListener("activate", e => e.waitUntil(
+  caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 
 async function remember(c, req, res) {
   const url = new URL(req.url);
@@ -14,6 +15,9 @@ async function remember(c, req, res) {
   await c.put(req, res);
 }
 
+// only real assets are worth keeping: not a login page a redirect led to, not an error page
+const cacheable = res => res.ok && !res.redirected && !/text\/html/.test(res.headers.get("content-type") || "");
+
 self.addEventListener("fetch", e => {
   const req = e.request, u = new URL(req.url);
   if (req.method !== "GET" || u.origin !== location.origin) return;
@@ -22,16 +26,20 @@ self.addEventListener("fetch", e => {
       const hit = await c.match(req);
       if (hit) return hit;
       const res = await fetch(req);
-      if (res.ok) remember(c, req, res.clone());
+      if (cacheable(res)) remember(c, req, res.clone());
       return res;
     }));
   } else if (req.mode === "navigate" && u.pathname === "/") {
     e.respondWith(caches.open(CACHE).then(async c => {
-      const net = fetch(req).then(res => { if (res.ok) c.put("/", res.clone()); return res; });
-      const slow = new Promise(r => setTimeout(r, 1500));
-      const first = await Promise.race([net.catch(() => null), slow.then(() => null)]);
-      if (first) return first;
-      return (await c.match("/")) || net;
+      try {
+        const res = await fetch(req);
+        if (res.ok && !res.redirected) c.put("/", res.clone());
+        return res;
+      } catch (err) {
+        const saved = await c.match("/");
+        if (saved) return saved;
+        throw err;
+      }
     }));
   }
 });

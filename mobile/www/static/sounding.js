@@ -1,4 +1,4 @@
-/* wxdeck: forecast soundings (Open-Meteo pressure levels) — skew-T log-p, surface parcel,
+/* Radarhound: forecast soundings (Open-Meteo pressure levels) — skew-T log-p, surface parcel,
    hodograph, Bunkers storm motion and helicity. Uses globals from app.js. */
 "use strict";
 

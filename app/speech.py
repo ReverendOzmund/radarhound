@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 
-log = logging.getLogger("wxdeck.speech")
+log = logging.getLogger("radarhound.speech")
 VOICE = os.getenv("ALERT_VOICE", "en_GB-alan-medium")
 _voice = None
 _lock = threading.Lock()

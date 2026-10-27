@@ -1,4 +1,4 @@
-/* wxdeck: supercell / tornado toolkit.
+/* Radarhound: supercell / tornado toolkit.
    - Archive volumes: server-side mesocyclone, TVS and debris (TDS) detections drawn as markers.
    - Vrot probe: max inbound/outbound within 2.5 km of the cursor on any velocity pane.
    - Live: couplet finder on BoM's Doppler wind images (coarse, but real time).
@@ -12,13 +12,14 @@ function ensureRotation() {
   if (!S.settings.rotDet || S.mode !== "raw" || !S.raw.scans.length) { S.rot.current = null; return; }
   const scan = S.raw.scans[S.raw.idx], key = `${S.radar.id}/${S.raw.date}/${scan}`;
   const hit = S.rot.cache.get(key);
-  if (hit) { if (hit.list) S.rot.current = hit; return; }
+  if (hit) { S.rot.current = hit.list ? hit : null; return; }
+  S.rot.current = null;                          // never show another scan's (or radar's) markers meanwhile
   const e = { key, list: null };
   S.rot.cache.set(key, e);
   fetch(`/api/archive/rotation?radar=${S.radar.id}&date=${S.raw.date}&time=${scan}`).then(r => (r.ok ? r.json() : null)).then(r => {
     e.list = r ? r.detections : [];
     if (S.raw.scans[S.raw.idx] === scan) { S.rot.current = e; draw(); renderRotPanel(); }
-  }).catch(() => { e.list = []; });
+  }).catch(() => { e.list = []; if (S.raw.scans[S.raw.idx] === scan) { S.rot.current = e; draw(); } });
 }
 
 function drawRotation() {

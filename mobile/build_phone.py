@@ -1,4 +1,4 @@
-"""Copy the wxdeck web page into the phone app for phone mode (run before `npx cap sync android`).
+"""Copy the Radarhound web page into the phone app for phone mode (run before `npx cap sync android`).
 
 www/static/   the same page files the server serves (app/static), minus the APK download
 www/app.html  the page, with the phone-mode server (phone-server.js) loaded first and the phone engine last

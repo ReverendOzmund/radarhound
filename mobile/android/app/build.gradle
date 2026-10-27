@@ -5,14 +5,14 @@ def keystoreFile = rootProject.file("../keystore.properties")
 if (keystoreFile.exists()) { keystoreProps.load(new FileInputStream(keystoreFile)) }
 
 android {
-    namespace "au.wxdeck.app"
+    namespace "au.radarhound.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "au.wxdeck.app"
+        applicationId "au.radarhound.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 8
-        versionName "2.0.1"
+        versionCode 9
+        versionName "2.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

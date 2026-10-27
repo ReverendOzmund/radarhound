@@ -78,8 +78,11 @@ def nowcast(frames_dir: Path, pid: str, km: float, lat0: float, lon0: float, lat
         h = lead0 + k * STEP_MIN / 60
         sx, sy = x - mv[0] * h, y - mv[1] * h      # where the rain that reaches the point now was then
         px, py = int(round(n / 2 + sx / kpp)), int(round(n / 2 - sy / kpp))
-        win = b[max(0, py - rad):py + rad + 1, max(0, px - rad):px + rad + 1]
-        lv = int(win.max()) if win.size else 0
+        if not (-rad <= px < n + rad and -rad <= py < n + rad):
+            lv = 0                                  # upwind of the image: nothing known, don't wrap around
+        else:
+            win = b[max(0, py - rad):max(0, py + rad + 1), max(0, px - rad):max(0, px + rad + 1)]
+            lv = int(win.max()) if win.size else 0
         rate = REFL_RATE[lv - 1] if lv >= 1 else 0.0
         steps.append({"min": k * STEP_MIN, "rate": rate, "level": lv})
     return {"radar": pid, "frame_time": t1.isoformat(), "motion_kmh": [round(mv[0]), round(mv[1])], "steps": steps}

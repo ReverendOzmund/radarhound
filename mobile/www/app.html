@@ -7,20 +7,20 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="wxdeck">
-<title>wxdeck</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛈️</text></svg>">
+<meta name="apple-mobile-web-app-title" content="Radarhound">
+<title>Radarhound</title>
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <meta name="theme-color" content="#0f1a20">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
-<link rel="stylesheet" href="/static/style.css?v=21">
+<link rel="stylesheet" href="/static/style.css?v=22">
 </head>
 <body>
 <header class="top">
-  <div class="brand">wxdeck</div>
+  <div class="brand"><img src="/static/logo.svg" alt="" class="brand-mark">Radarhound</div>
   <select id="radarSel" aria-label="Radar site"></select>
   <nav id="productTabs" class="tabs" aria-label="Radar product"></nav>
   <a class="get-app" href="/app" title="Phone app and install options">Get the app</a>
@@ -48,7 +48,7 @@
         <button id="explainChip" class="chip" title="What am I looking at? (I)">ⓘ Explain</button>
         <button id="helpChip" class="chip" title="Keyboard shortcuts (?)">?</button>
         <button id="warnChip" class="chip warn" hidden title="Current BoM warnings"></button>
-        <button id="wxwChip" class="chip wxw" hidden title="wxdeck automated warnings and watches"></button>
+        <button id="wxwChip" class="chip wxw" hidden title="Radarhound automated warnings and watches"></button>
       </div>
     <div class="scope-frame" id="scopeFrame">
       <div class="panes" id="panes" data-layout="1">
@@ -150,7 +150,7 @@
       </div>
       <div class="tuning-grid" data-group="map">
         <label>Home <button class="tbtn" id="homeBtn" title="Set your home location">Set home</button></label>
-        <label data-tip="Night is wxdeck's dark map; BoM classic is the Bureau's own light basemap">Map
+        <label data-tip="Night is Radarhound's dark map; BoM classic is the Bureau's own light basemap">Map
           <select id="mapStyle"><option value="dark">Night</option><option value="bom">BoM classic</option></select>
         </label>
         <label class="check"><input type="checkbox" id="lyrTopo" checked> Terrain</label>
@@ -196,7 +196,7 @@
         </label>
       </div>
       <div class="tuning-grid" data-group="storms" hidden>
-        <label class="check" data-tip="wxdeck's own automated warnings (radar-indicated tornado, severe thunderstorm, flash flood). Unofficial: BoM always takes precedence"><input type="checkbox" id="lyrWxw" checked> wxdeck warnings</label>
+        <label class="check" data-tip="Radarhound's own automated warnings (radar-indicated tornado, severe thunderstorm, flash flood). Unofficial: BoM always takes precedence"><input type="checkbox" id="lyrWxw" checked> Radarhound warnings</label>
         <label class="check" data-tip="Areas where the forecast model shows ingredients for severe weather in the next 12 hours"><input type="checkbox" id="lyrWatches" checked> Model watches</label>
         <label class="check chaser" data-tip="Spots on the live Doppler image where wind blows towards and away from the radar side by side: possible rotation"><input type="checkbox" id="lyrCouplets" checked> Live Doppler couplets</label>
         <label class="check pro" data-tip="Mesocyclone, tornado vortex and debris detections from full-resolution archive scans"><input type="checkbox" id="lyrRotDet" checked> Rotation detection (archive)</label>
@@ -276,7 +276,7 @@
     </section>
 
     <section class="panel" id="wxwPanel" hidden>
-      <h2>wxdeck warnings</h2>
+      <h2>Radarhound warnings</h2>
       <div id="wxwBody"></div>
     </section>
 
@@ -323,7 +323,7 @@
 
     <section class="panel pro" id="verifyPanel">
       <h2>Warning verification <button class="link-btn" id="verifyLoad">refresh</button></h2>
-      <div id="verifyBody" class="verify"><p class="dim">How wxdeck's warnings compared with BoM warnings and storm reports over the last 30 days.</p></div>
+      <div id="verifyBody" class="verify"><p class="dim">How Radarhound's warnings compared with BoM warnings and storm reports over the last 30 days.</p></div>
     </section>
 
     <section class="panel chaser">
@@ -430,21 +430,22 @@
     </dl>
   </div>
 </div>
-<script src="/static/perf.js?v=21"></script>
-<script src="/static/algo.js?v=21"></script>
-<script src="/static/app.js?v=21"></script>
-<script src="/static/gl.js?v=21"></script>
-<script src="/static/seamless.js?v=21"></script>
-<script src="/static/cells.js?v=21"></script>
-<script src="/static/layers.js?v=21"></script>
-<script src="/static/supercell.js?v=21"></script>
-<script src="/static/alerts.js?v=21"></script>
-<script src="/static/ux.js?v=21"></script>
-<script src="/static/picker.js?v=21"></script>
-<script src="/static/modes.js?v=21"></script>
-<script src="/static/sounding.js?v=21"></script>
-<script src="/static/panels.js?v=21"></script>
-<script src="/static/icons.js?v=21"></script>
+<script src="/static/perf.js?v=22"></script>
+<script src="/static/algo.js?v=22"></script>
+<script src="/static/app.js?v=22"></script>
+<script src="/static/gl.js?v=22"></script>
+<script src="/static/seamless.js?v=22"></script>
+<script src="/static/cells.js?v=22"></script>
+<script src="/static/layers.js?v=22"></script>
+<script src="/static/supercell.js?v=22"></script>
+<script src="/static/alerts.js?v=22"></script>
+<script src="/static/ux.js?v=22"></script>
+<script src="/static/picker.js?v=22"></script>
+<script src="/static/modes.js?v=22"></script>
+<script src="/static/sounding.js?v=22"></script>
+<script src="/static/panels.js?v=22"></script>
+<script src="/static/icons.js?v=22"></script>
+<script src="/static/health.js?v=22"></script>
 <script src="/static/phone-engine.js"></script>
 <script src="/static/phone-ui.js"></script>
 </body>

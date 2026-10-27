@@ -1,4 +1,4 @@
-/* wxdeck: GPU rendering of raw radar sweeps. The sweep is uploaded once as a texture (rays x gates);
+/* Radarhound: GPU rendering of raw radar sweeps. The sweep is uploaded once as a texture (rays x gates);
    a fragment shader works out range and azimuth for every screen pixel and looks the colour up,
    so panning, zooming and playing raw loops no longer cost tens of milliseconds per pane.
    Falls back to the CPU renderer if WebGL isn't available. Uses globals from app.js. */
@@ -57,6 +57,12 @@ void main() {
       cv = document.createElement("canvas");
       gl = cv.getContext("webgl", { premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: false });
       if (!gl) throw new Error("no webgl");
+      // phones drop the GPU context when the app is backgrounded: forget everything and rebuild on next use
+      cv.addEventListener("webglcontextlost", ev => {
+        ev.preventDefault();
+        gl = null; prog = null; loc = {}; cv = null;
+        mprog = null; mloc = {}; lutTex.clear(); idxTex.clear();
+      });
       const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
         if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
       prog = gl.createProgram();
@@ -73,7 +79,7 @@ void main() {
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       return true;
     } catch (e) {
-      console.warn("wxdeck: WebGL unavailable, using CPU rendering", e);
+      console.warn("Radarhound: WebGL unavailable, using CPU rendering", e);
       failed = true; gl = null;
       return false;
     }
@@ -195,7 +201,7 @@ void main() {
   // layers: [{key, data (palette indices, N x N), lat, lon, km, lut (Uint32Array 256)}], view origin lat0/lon0
   function renderMosaic(layers, W, H, lat0, lon0) {
     if (!init()) return null;
-    try { mosaicProgram(); } catch (e) { console.warn("wxdeck: mosaic shader failed", e); return null; }
+    try { mosaicProgram(); } catch (e) { console.warn("Radarhound: mosaic shader failed", e); return null; }
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
     gl.useProgram(mprog);
     const pl = gl.getAttribLocation(mprog, "p"); gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
@@ -234,7 +240,7 @@ void main() {
     times.push(ms);
     if (times.length >= 6) {
       const m = [...times].sort((a, b) => a - b)[3];
-      if (m > 30) { api.slow = true; console.info(`wxdeck: GPU rendering is slow here (${m.toFixed(0)} ms), using the CPU`); }
+      if (m > 30) { api.slow = true; console.info(`Radarhound: GPU rendering is slow here (${m.toFixed(0)} ms), using the CPU`); }
       times.length = 0;
     }
   }

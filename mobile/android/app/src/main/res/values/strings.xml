@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">wxdeck</string>
-    <string name="title_activity_main">wxdeck</string>
-    <string name="package_name">au.wxdeck.app</string>
-    <string name="custom_url_scheme">au.wxdeck.app</string>
+    <string name="app_name">Radarhound</string>
+    <string name="title_activity_main">Radarhound</string>
+    <string name="package_name">au.radarhound.app</string>
+    <string name="custom_url_scheme">au.radarhound.app</string>
 </resources>

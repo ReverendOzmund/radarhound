@@ -59,7 +59,7 @@ def wide_bbox(lat0, lon0, half):
 
 
 def to_flat(png: bytes, box, lat0, lon0, half, size) -> bytes:
-    """Resample a lat/lon (EPSG:4326) image onto wxdeck's radar-centred flat-earth grid, so wide
+    """Resample a lat/lon (EPSG:4326) image onto Radarhound's radar-centred flat-earth grid, so wide
     views line up with radar, towns and Himawari data (which all use per-row cos(latitude))."""
     src = np.asarray(Image.open(io.BytesIO(png)).convert("RGBA"))
     H, W = src.shape[:2]

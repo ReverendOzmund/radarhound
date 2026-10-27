@@ -1,5 +1,5 @@
-/* wxdeck phone mode: the server, inside the app.
-   The full wxdeck page runs unchanged; this file answers its /api/... requests on the phone by fetching
+/* Radarhound phone mode: the server, inside the app.
+   The full Radarhound page runs unchanged; this file answers its /api/... requests on the phone by fetching
    straight from BoM, Open-Meteo, NASA GIBS, LightningMaps, the Aviation Weather Center and Nominatim.
    BoM sends no CORS headers, so its pages and images come through Capacitor's native HTTP. Things that
    need a server running all day (48 h history, raw volumes, raw Himawari bands, verification) say so.
@@ -8,7 +8,7 @@
 
 const WXP = (() => {
   const BOM = "https://reg.bom.gov.au";
-  const UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36 wxdeck-phone";
+  const UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36 radarhound-phone";
   const origFetch = window.fetch.bind(window);
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("wxp." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -491,7 +491,7 @@ const WXP = (() => {
     const slot = Math.floor(Math.min(want, Date.now() - 50 * 60e3) / 600e3) * 600e3;      // GIBS runs ~40-50 min behind
     let name = { ir13e: "Himawari_AHI_Band13_Clean_Infrared", ir: "Himawari_AHI_Band13_Clean_Infrared", vis: "Himawari_AHI_Band3_Red_Visible_1km", airmass: "Himawari_AHI_Air_Mass" }[layer];
     if (layer === "geocolor") name = sunUp(lat, lon, slot) ? "Himawari_AHI_Band3_Red_Visible_1km" : "Himawari_AHI_Band13_Clean_Infrared";
-    if (!name) throw httpError(404, "That satellite channel needs the wxdeck server");
+    if (!name) throw httpError(404, "That satellite channel needs the Radarhound server");
     const size = SAT_SIZE[half] || 768;
     const blob = await cached(`sat|${name}|${radar}|${half}|${slot}`, 6 * 3600e3, () => wmsFlat(name, lat, lon, half, size, new Date(slot).toISOString().slice(0, 16) + ":00Z"), 120e3);
     return new Response(blob, { headers: { "content-type": "image/png", "X-Sat-Time": new Date(slot).toISOString(), "X-Sat-Half-Km": String(half) } });
@@ -504,7 +504,7 @@ const WXP = (() => {
   async function natbase() {
     const blob = await cached("natbase", 30 * 86400e3, async () => {
       const b = await wmsFlat("BlueMarble_ShadedRelief_Bathymetry", NAT.LAT0, NAT.LON0, 2600, 1300, null, "image/jpeg");
-      // darken to match wxdeck's night map
+      // darken to match Radarhound's night map
       const bmp = await createImageBitmap(b), cv = new OffscreenCanvas(bmp.width, bmp.height), g = cv.getContext("2d");
       g.fillStyle = "#0b1820"; g.fillRect(0, 0, cv.width, cv.height);
       g.globalAlpha = 0.45; g.drawImage(bmp, 0, 0); bmp.close();
@@ -636,10 +636,10 @@ const WXP = (() => {
       case "alerts": return json(E ? await E.alerts(q) : { alerts: [] });
       case "nowcast": return json(E ? await E.nowcastApi(q) : { text: "" });
       case "brief": return json(E ? await E.brief(q) : { text: "" });
-      case "verify": return json({ days: 30, stats: { warnings: 0, by_type: {}, with_bom: 0, with_reports: 0, bom_thunderstorm_warnings: 0, bom_without_wxdeck: 0 }, warnings: [], bom_missed: [], phone: true });
+      case "verify": return json({ days: 30, stats: { warnings: 0, by_type: {}, with_bom: 0, with_reports: 0, bom_thunderstorm_warnings: 0, bom_without_radarhound: 0 }, warnings: [], bom_missed: [], phone: true });
       case "status": return json({ phone: true, lightning: LTG.status });
       case "archive": case "hsd": case "obssounding":
-        throw httpError(404, "This needs your wxdeck server (raw radar archive, raw satellite bands and observed soundings aren't available in phone mode)");
+        throw httpError(404, "This needs your Radarhound server (raw radar archive, raw satellite bands and observed soundings aren't available in phone mode)");
       default: throw httpError(404, "not available in phone mode");
     }
   }
@@ -659,7 +659,12 @@ const WXP = (() => {
     const r = await window.fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const obj = URL.createObjectURL(await r.blob());
-    return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = obj; });
+    return new Promise((res, rej) => {
+      const im = new Image();
+      im.onload = () => { URL.revokeObjectURL(obj); res(im); };      // the decoded image stays; the blob can go
+      im.onerror = e => { URL.revokeObjectURL(obj); rej(e); };
+      im.src = obj;
+    });
   }
 
   document.documentElement.classList.add("phone-mode");

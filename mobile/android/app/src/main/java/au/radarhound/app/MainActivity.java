@@ -1,4 +1,4 @@
-package au.wxdeck.app;
+package au.radarhound.app;
 
 import android.os.Bundle;
 import android.webkit.WebView;

@@ -1,5 +1,5 @@
-/* wxdeck phone mode: the parts of the server that think, ported to run on the phone.
-   - wxdeck's own warnings (same rules as warnings_engine.py): storm cells on the latest 128 km image,
+/* Radarhound phone mode: the parts of the server that think, ported to run on the phone.
+   - Radarhound's own warnings (same rules as warnings_engine.py): storm cells on the latest 128 km image,
      tracking, Doppler couplets on two scans in a row, lightning, model environment, NWS-style polygons
    - the all-Australia mosaic, stitched from every radar's 512 km image (strongest echo wins)
    - the rain nowcast, the alert feed and the spoken day summary
@@ -504,7 +504,7 @@ const WXP_ENGINE = (() => {
       const inside = inPoly(lat, lon, w.polygon), d = inside ? 0 : Math.min(...w.polygon.map(([la, lo]) => P.dist(lat, lon, la, lo))), isNear = inside || d <= near;
       if (!isNear && (scope !== "all" || d > far)) continue;
       const where = sayList(w.towns || []) || "the area " + w.text.split(" was located ").pop().split(",")[0];
-      out.push({ id: w.event || w.id, source: "wxdeck", type: w.type, severity: w.type === "TOR" ? 3 : 2, title: names[w.type], areas: w.towns || [], inside, near: isNear,
+      out.push({ id: w.event || w.id, source: "radarhound", type: w.type, severity: w.type === "TOR" ? 3 : 2, title: names[w.type], areas: w.towns || [], inside, near: isNear,
         distance_km: Math.round(d), issued: w.issued, expires: w.expires, text: w.text, hazards: w.hazards, lat: w.lat, lon: w.lon,
         speech: `${names[w.type]} issued for ${where}, until ${fmtT(w.expires)}.` + (inside ? " This includes your location." : "") });
     }
@@ -530,7 +530,7 @@ const WXP_ENGINE = (() => {
       if (Date.parse(w.valid_to) <= now) continue;
       const inside = inPoly(lat, lon, w.polygon), d = inside ? 0 : Math.min(...w.polygon.map(([la, lo]) => P.dist(lat, lon, la, lo))), isNear = inside || d <= near;
       if (!isNear && (scope !== "all" || d > far)) continue;
-      out.push({ id: w.id, source: "wxdeck", type: w.type, severity: 1, title: w.title, areas: [], inside, near: isNear, distance_km: Math.round(d), issued: w.valid_from, expires: w.valid_to,
+      out.push({ id: w.id, source: "radarhound", type: w.type, severity: 1, title: w.title, areas: [], inside, near: isNear, distance_km: Math.round(d), issued: w.valid_from, expires: w.valid_to,
         text: w.text, hazards: [], speech: `${w.title} ${inside ? "for your area" : "near your area"}, until ${new Date(w.valid_to).toLocaleTimeString([], { hour: "numeric" }).toLowerCase()}. ${speakable(w.text)}` });
     }
     // gusts at stations
@@ -539,7 +539,7 @@ const WXP_ENGINE = (() => {
         if (!s.gust || s.gust < 90 || !s.time || now - Date.parse(s.time) > 40 * 60e3) continue;
         const d = P.dist(lat, lon, s.lat, s.lon), isNear = d <= near;
         if (!isNear && (scope !== "all" || d > far)) continue;
-        out.push({ id: `gust-${s.name}-${s.time.slice(0, 13)}`, source: "wxdeck", type: "WIND", severity: 2, title: "Damaging wind gust observed", areas: [s.name], inside: null, near: isNear,
+        out.push({ id: `gust-${s.name}-${s.time.slice(0, 13)}`, source: "radarhound", type: "WIND", severity: 2, title: "Damaging wind gust observed", areas: [s.name], inside: null, near: isNear,
           distance_km: Math.round(d), issued: s.time, expires: null, text: `A gust of ${s.gust.toFixed(0)} km/h was measured at ${s.name}.`, hazards: [],
           speech: `Damaging wind gust of ${s.gust.toFixed(0)} kilometres per hour measured at ${s.name}.` });
       }
@@ -548,7 +548,7 @@ const WXP_ENGINE = (() => {
     const rows = P.LTG.strikes.filter(s => s[0] >= now - 10 * 60e3 && P.dist(lat, lon, s[1], s[2]) <= 15);
     if (rows.length) {
       const first = Math.min(...rows.map(r => r[0])), closest = Math.min(...rows.map(r => P.dist(lat, lon, r[1], r[2])));
-      out.push({ id: `ltg-${Math.floor(first / 1800e3)}`, source: "wxdeck", type: "LTG", severity: 1, title: "Lightning nearby", areas: [], inside: null, near: true, distance_km: Math.round(closest),
+      out.push({ id: `ltg-${Math.floor(first / 1800e3)}`, source: "radarhound", type: "LTG", severity: 1, title: "Lightning nearby", areas: [], inside: null, near: true, distance_km: Math.round(closest),
         issued: new Date(first).toISOString(), expires: null, text: `${rows.length} lightning strike${rows.length > 1 ? "s" : ""} within 15 km in the last 10 minutes, the closest ${closest.toFixed(0)} km away.`,
         hazards: [], speech: `Lightning within ${Math.max(1, Math.round(closest))} kilometres. Head indoors.` });
     }
@@ -563,7 +563,7 @@ const WXP_ENGINE = (() => {
         if (!(tca > 0 && tca <= 1) || Math.hypot(x + vx * tca, y + vy * tca) > 8) continue;
         const key = `${s.lat.toFixed(1)},${s.lon.toFixed(1)}`; if (seenK.has(key)) continue; seenK.add(key);
         const eta = new Date(now + tca * 3600e3), heavy = s.dbz >= 55, d = Math.hypot(x, y);
-        out.push({ id: `arr-${s.id}`, source: "wxdeck", type: "ARR", severity: 1, near: true, title: "Storm approaching", areas: [], inside: null, distance_km: Math.round(d),
+        out.push({ id: `arr-${s.id}`, source: "radarhound", type: "ARR", severity: 1, near: true, title: "Storm approaching", areas: [], inside: null, distance_km: Math.round(d),
           issued: new Date(now).toISOString(), expires: new Date(eta.getTime() + 20 * 60e3).toISOString(), lat: s.lat, lon: s.lon,
           text: `A ${heavy ? "strong " : ""}thunderstorm (${s.dbz} dBZ) ${d.toFixed(0)} km away is moving towards you at ${s.speed} km/h, arriving around ${fmtT(eta.toISOString())}.`, hazards: [],
           speech: `${heavy ? "Strong thunderstorm" : "Thunderstorm"} approaching, arriving in about ${Math.max(5, Math.round(tca * 12) * 5)} minutes.` });
@@ -574,7 +574,7 @@ const WXP_ENGINE = (() => {
       const nc = await nowcastAt(lat, lon), w = nowWords(nc);
       if (nc && w.starts_min != null && w.starts_min > 0 && w.starts_min <= 30) {
         const start = now + w.starts_min * 60e3;
-        out.push({ id: `rain-${Math.floor(start / 3600e3)}`, source: "wxdeck", type: "RAIN", severity: 0, near: true, title: "Rain soon", areas: [], inside: null, distance_km: null,
+        out.push({ id: `rain-${Math.floor(start / 3600e3)}`, source: "radarhound", type: "RAIN", severity: 0, near: true, title: "Rain soon", areas: [], inside: null, distance_km: null,
           issued: new Date(now).toISOString(), expires: null, text: w.text, hazards: [], rain: true, speech: w.text.replace(" min)", " minutes)") });
       }
     } catch { /* optional */ }

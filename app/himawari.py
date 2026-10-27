@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-log = logging.getLogger("wxdeck.himawari")
+log = logging.getLogger("radarhound.himawari")
 
 AWS = os.getenv("HIMAWARI_AWS", "https://noaa-himawari9.s3.amazonaws.com")
 SLIDER = os.getenv("SLIDER_BASE", "https://slider.cira.colostate.edu")
@@ -221,6 +221,10 @@ async def get_band(client, data_dir: Path, product: str, rid: str, lat0: float, 
                 return path, slot
             age = datetime.now(timezone.utc) - slot
             _empty_until[ek] = time.time() + (60 if age < timedelta(hours=1) else 86400)
+            if len(_empty_until) > 500:                 # forget expired "nothing there" marks
+                now_s = time.time()
+                for k in [k for k, v in _empty_until.items() if v < now_s]:
+                    _empty_until.pop(k, None)
         slot -= timedelta(minutes=10)
     return None, None
 
@@ -361,18 +365,20 @@ async def get_rgb(client, data_dir: Path, product: str, rid: str, lat0: float, l
                 for band, keys in want.items():
                     raws = [await _download_segment(client, data_dir, k) for k in keys]
                     bands[band] = await asyncio.to_thread(_resample_float, raws, lat0, lon0, half, size)
-                if spec.get("geo"):
-                    la, lo = grid_latlon(lat0, lon0, half, size)
-                    r, g, b = spec["f"](bands, la, lo, slot)
-                else:
-                    r, g, b = spec["f"](bands)
-                rgb = np.nan_to_num(np.stack([r, g, b], axis=-1) * 255).astype(np.uint8)
-                d.mkdir(parents=True, exist_ok=True)
-                buf = io.BytesIO()
-                Image.fromarray(rgb).save(buf, "PNG")
-                tmp = path.with_suffix(".part")
-                tmp.write_bytes(buf.getvalue())
-                tmp.replace(path)
+                def compose(bands=bands, spec=spec, slot=slot):      # the RGB maths and PNG encode: off the event loop
+                    if spec.get("geo"):
+                        la, lo = grid_latlon(lat0, lon0, half, size)
+                        r, g, b = spec["f"](bands, la, lo, slot)
+                    else:
+                        r, g, b = spec["f"](bands)
+                    rgb = np.nan_to_num(np.stack([r, g, b], axis=-1) * 255).astype(np.uint8)
+                    d.mkdir(parents=True, exist_ok=True)
+                    buf = io.BytesIO()
+                    Image.fromarray(rgb).save(buf, "PNG")
+                    tmp = path.with_suffix(".part")
+                    tmp.write_bytes(buf.getvalue())
+                    tmp.replace(path)
+                await asyncio.to_thread(compose)
                 for keys in want.values():
                     for k in keys:
                         (data_dir / "hsd_raw" / Path(k).name.replace(".bz2", "")).unlink(missing_ok=True)

@@ -1,4 +1,4 @@
-/* wxdeck: performance overlay (press P) and timed fetches. Loaded before app.js. */
+/* Radarhound: performance overlay (press P) and timed fetches. Loaded before app.js. */
 "use strict";
 const PERF = (() => {
   const stats = { draw: [], decode: [], api: [] }, calls = [];

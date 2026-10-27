@@ -1,4 +1,4 @@
-/* wxdeck: NWS-style alerts in the browser. New warnings near home (or anywhere, if chosen) sound an
+/* Radarhound: NWS-style alerts in the browser. New warnings near home (or anywhere, if chosen) sound an
    attention tone, are read out loud ("Tornado warning issued for Perth, Cannington and Bentley...") and
    show a banner; a system notification is added where the browser allows it (https or localhost).
    Browsers only allow sound after you've touched the page once, so the first tap or click unlocks it. */
@@ -6,11 +6,11 @@
 
 const ALERT = { ctx: null, seen: null, timer: null, unlocked: false, queue: [], speaking: false };
 // inside the Android app the background service already plays the tone and reads the alert out
-const IN_APP = /wxdeck-app/.test(navigator.userAgent) && typeof WXP === "undefined";      // phone mode: the page alerts for itself while open
+const IN_APP = /radarhound-app/.test(navigator.userAgent) && typeof WXP === "undefined";      // phone mode: the page alerts for itself while open
 
 function alertSeen() {
   if (!ALERT.seen) {
-    try { ALERT.seen = JSON.parse(localStorage.getItem("wxdeck.alertsSeen") || "{}"); } catch { ALERT.seen = {}; }
+    try { ALERT.seen = JSON.parse(localStorage.getItem("radarhound.alertsSeen") || "{}"); } catch { ALERT.seen = {}; }
     const cutoff = Date.now() - 24 * 3600e3;
     for (const [k, t] of Object.entries(ALERT.seen)) if (t < cutoff) delete ALERT.seen[k];
   }
@@ -18,7 +18,7 @@ function alertSeen() {
 }
 function markSeen(id) {
   alertSeen()[id] = Date.now();
-  try { localStorage.setItem("wxdeck.alertsSeen", JSON.stringify(ALERT.seen)); } catch { /* private mode */ }
+  try { localStorage.setItem("radarhound.alertsSeen", JSON.stringify(ALERT.seen)); } catch { /* private mode */ }
 }
 
 // unlock audio and speech on the first interaction with the page. Phones only count a finished tap
@@ -142,7 +142,7 @@ async function fireAlerts(list, test = false) {
     while (queue.length) {
       for (const a of queue) {
         if ($("alertBanner").hidden && !test) break;          // dismissed: stop talking
-        await speak((test ? "This is a test. " : "wxdeck alert. ") + a.speech);
+        await speak((test ? "This is a test. " : "Radarhound alert. ") + a.speech);
         await new Promise(r => setTimeout(r, 500));
       }
       queue = ALERT.queue || []; ALERT.queue = [];
@@ -197,7 +197,7 @@ function setupAlerts() {
   $("alertTest").onclick = () => {
     unlockAudio();
     if (window.Notification && Notification.permission === "default" && window.isSecureContext) Notification.requestPermission();
-    fireAlert({ id: "test", source: "wxdeck", type: "TOR", title: "Tornado warning", speech: `Tornado warning issued for ${S.cfg.home.name}, until ${fmtTime.format(new Date(Date.now() + 45 * 60e3))}.` }, true);
+    fireAlert({ id: "test", source: "radarhound", type: "TOR", title: "Tornado warning", speech: `Tornado warning issued for ${S.cfg.home.name}, until ${fmtTime.format(new Date(Date.now() + 45 * 60e3))}.` }, true);
   };
   clearInterval(ALERT.timer);
   ALERT.timer = setInterval(checkAlerts, 30e3);

@@ -1,4 +1,4 @@
-package au.wxdeck.app;
+package au.radarhound.app;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -14,7 +14,7 @@ public class PollReceiver extends BroadcastReceiver {
         if (s != null) { s.poke(); return; }
         // the service was stopped (low memory): start it again; it checks straight away
         PowerManager.WakeLock w = ((PowerManager) ctx.getSystemService(Context.POWER_SERVICE))
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "wxdeck:restart");
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "radarhound:restart");
         w.acquire(20_000);
         try { AlertService.start(ctx); } catch (Exception ignored) { }
     }

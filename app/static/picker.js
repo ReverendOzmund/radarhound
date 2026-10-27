@@ -23,7 +23,7 @@
   pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "Choose a radar");
   pop.innerHTML = `<div class="rp-head"><input id="radarFind" type="search" placeholder="Search radars, places or states" autocomplete="off" spellcheck="false" aria-label="Search radars"></div>
     <div class="rp-list" id="radarList" role="listbox"></div>
-    <div class="rp-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span><span class="rp-legend"><i class="d live"></i>live <i class="d wait"></i>loading <i class="d off"></i>starts when picked</span></div>`;
+    <div class="rp-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>*</kbd> pin</span><span><kbd>Esc</kbd> close</span><span class="rp-legend"><i class="d live"></i>live <i class="d wait"></i>loading <i class="d off"></i>starts when picked</span></div>`;
   document.body.appendChild(pop);
   const find = pop.querySelector("#radarFind"), list = pop.querySelector("#radarList");
   let rows = [], cur = -1;
@@ -110,12 +110,33 @@
       const meta = r.national ? "Every BoM radar stitched together" :
         [r.state, fmtKm(r.dist) && `${fmtKm(r.dist)} from home`].filter(Boolean).join(" · ");
       return `<button type="button" class="rp-row${r.id === curId ? " on" : ""}" role="option" data-i="${i}" aria-selected="${r.id === curId}" title="${esc(statusText(r))}">
-        <i class="d ${st}"></i><span class="rp-name">${esc(r.name)}</span><span class="rp-meta">${esc(meta)}</span>${r.national ? "" : `<span class="rp-id">IDR${esc(r.id)}</span>`}</button>`;
+        <i class="d ${st}"></i><span class="rp-name">${esc(r.name)}</span><span class="rp-meta">${esc(meta)}</span>${r.national ? "" : `<span class="rp-id">IDR${esc(r.id)}</span>`}${r.national ? "" : pinHtml(r, i)}</button>`;
     }).join("");
     cur = rows.findIndex(r => r.id === curId);
     if (find.value || cur < 0) cur = rows.length ? 0 : -1;
     mark();
   }
+  // pin / unpin: pinned radars are "Your radars" (kept with full products and history on the server)
+  const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.2 2.7 5.5 6 .9-4.4 4.2 1 6-5.3-2.8-5.4 2.8 1-6L3.3 9.6l6-.9z"/></svg>';
+  const pinned = r => r.kind === "mine";
+  const pinHtml = (r, i) => `<span class="rp-pin${pinned(r) ? " on" : ""}" data-pin="${i}" role="button" tabindex="-1"
+    title="${pinned(r) ? "Unpin from Your radars" : "Pin to Your radars (keeps every range, Doppler, rainfall and full history)"}">${STAR}</span>`;
+  async function togglePin(r) {
+    const st = app();
+    if (!st || !st.cfg) return;
+    const mine = st.cfg.radars.filter(x => !x.auto && !x.national).map(x => x.id);
+    const want = pinned(r) ? mine.filter(id => id !== r.id) : [...mine, r.id];
+    const say = m => (typeof toast === "function" ? toast(m) : alert(m.replace(/<[^>]+>/g, "")));
+    if (!want.length) return say("Keep at least one radar pinned.");
+    if (want.length > 8) return say("Up to 8 pinned radars. Unpin one first.");
+    const res = await fetch("/api/radars", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ radars: want }) }).catch(() => null);
+    if (!res || !res.ok) return say("Couldn't change your radars on the server.");
+    say(pinned(r) ? `Unpinned <b>${esc(r.name)}</b>.` : `Pinned <b>${esc(r.name)}</b>. Its loops start downloading now.`);
+    try { await loadConfig(); } catch { /* next refresh picks it up */ }
+    if (!pop.hidden) render();
+    sync();
+  }
+
   function mark() {
     list.querySelectorAll(".rp-row").forEach(b => b.classList.toggle("kb", +b.dataset.i === cur));
     const b = list.querySelector(`.rp-row[data-i="${cur}"]`);
@@ -157,9 +178,15 @@
     if (e.key === "ArrowDown") { cur = Math.min(rows.length - 1, cur + 1); mark(); e.preventDefault(); }
     else if (e.key === "ArrowUp") { cur = Math.max(0, cur - 1); mark(); e.preventDefault(); }
     else if (e.key === "Enter") { choose(rows[cur]); e.preventDefault(); }
-    else if (e.key === "Escape") { close(); btn.focus(); e.preventDefault(); }
+    else if (e.key === "*" && rows[cur] && !rows[cur].national) { togglePin(rows[cur]); e.preventDefault(); }
+    else if (e.key === "Escape") { close(); btn.focus(); e.preventDefault(); e.stopPropagation(); }
   });
-  list.addEventListener("click", e => { const b = e.target.closest(".rp-row"); if (b) choose(rows[+b.dataset.i]); });
+  list.addEventListener("click", e => {
+    const pin = e.target.closest(".rp-pin");
+    if (pin) { e.preventDefault(); e.stopPropagation(); togglePin(rows[+pin.dataset.pin]); return; }
+    const b = e.target.closest(".rp-row");
+    if (b) choose(rows[+b.dataset.i]);
+  });
   document.addEventListener("pointerdown", e => { if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) close(); });
   addEventListener("resize", () => { if (!pop.hidden) place(); });
   document.addEventListener("keydown", e => {

@@ -1,4 +1,4 @@
-/* wxdeck: seamless all-Australia radar. On the national view, zooming in pulls the live 128 km loops of
+/* Radarhound: seamless all-Australia radar. On the national view, zooming in pulls the live 128 km loops of
    the radars in view and blends them over the 5 km national mosaic, reprojected on the GPU so every
    radar lines up. Where radars overlap the nearest one wins. Uses globals from app.js / gl.js. */
 "use strict";

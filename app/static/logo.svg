@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <radialGradient id="rh-sweep" cx="50" cy="56" r="31" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2a93b" stop-opacity=".05"/>
+      <stop offset="1" stop-color="#f2a93b" stop-opacity=".55"/>
+    </radialGradient>
+  </defs>
+  <!-- floppy hound ears, hanging behind the scope -->
+  <path d="M39 25 C24 21 9 32 8 52 C7 71 12 87 21 90 C28 92 32 85 32 76 L35 44 Z" fill="#c98428"/>
+  <path d="M61 25 C76 21 91 32 92 52 C93 71 88 87 79 90 C72 92 68 85 68 76 L65 44 Z" fill="#c98428"/>
+  <!-- the scope is the face -->
+  <circle cx="50" cy="56" r="33" fill="#0f1a20" stroke="#f2a93b" stroke-width="5"/>
+  <circle cx="50" cy="56" r="21" fill="none" stroke="#f2a93b" stroke-opacity=".45" stroke-width="2"/>
+  <circle cx="50" cy="56" r="10" fill="none" stroke="#f2a93b" stroke-opacity=".45" stroke-width="2"/>
+  <path d="M50 56 L50 25.5 A30.5 30.5 0 0 1 78.7 45.6 Z" fill="url(#rh-sweep)"/>
+  <path d="M50 56 L78.7 45.6" stroke="#f2a93b" stroke-width="3" stroke-linecap="round"/>
+  <!-- the scent: a storm -->
+  <circle cx="66" cy="38" r="5" fill="#ef5b4a"/>
+  <circle cx="66" cy="38" r="9" fill="none" stroke="#ef5b4a" stroke-opacity=".45" stroke-width="2"/>
+  <circle cx="50" cy="56" r="3.2" fill="#f2a93b"/>
+</svg>

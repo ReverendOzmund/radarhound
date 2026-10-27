@@ -4,9 +4,10 @@ The website's warnings RSS isn't on FTP, but every warning is: each product is a
 /anon/gen/fwo (IDW21033.xml and so on) whose <amoc><product-type> is "W". A detailed folder listing every
 few minutes shows which files changed; only those are downloaded and parsed, and what's been parsed is
 kept on disk so a restart doesn't fetch the lot again. The result has the same shape as the RSS items
-(title, link, pub, level) so the rest of wxdeck doesn't care where warnings came from.
+(title, link, pub, level) so the rest of Radarhound doesn't care where warnings came from.
 """
 import asyncio
+import ftplib
 import json
 import logging
 import re
@@ -17,7 +18,7 @@ from pathlib import Path
 
 from . import bomftp
 
-log = logging.getLogger("wxdeck.warn")
+log = logging.getLogger("radarhound.warn")
 
 STATE_LETTER = {"wa": "W", "nsw": "N", "vic": "V", "qld": "Q", "sa": "S", "tas": "T", "nt": "D", "act": "N"}
 NAME = re.compile(r"^(ID[A-Z]\d{5})\.xml$")
@@ -39,7 +40,7 @@ def load(data_dir: Path):
         d = json.loads(f.read_text())
         _versions.update(d.get("versions", {}))
         state["products"].update(d.get("products", {}))
-        state["loaded"] = bool(_versions)
+        # not marked fresh: only a successful refresh does that (old warnings mustn't stand in for new ones)
     except ValueError:
         pass
 
@@ -98,12 +99,13 @@ def refresh(data_dir: Path, letters: set):
     for n in changed:
         try:
             w = parse(bomftp.get(f"{bomftp.FWO_DIR}/{n}"))
-        except Exception as e:
-            log.debug("warning file %s failed: %s", n, e)
+        except ftplib.error_perm as e:          # the file went away between listing and fetch
+            log.debug("warning file %s gone: %s", n, e)
             continue
+        # connection errors propagate: run() logs them and waits, rather than timing out file by file
         _versions[n] = files[n]
         state["products"][n[:-4]] = w
-    for n in [n for n in _versions if n not in files]:           # products BoM has removed
+    for n in [n for n in list(_versions) if n not in files]:           # products BoM has removed
         del _versions[n]
         state["products"].pop(n[:-4], None)
     state.update(loaded=True, last=time.time(), error=None)
@@ -112,10 +114,14 @@ def refresh(data_dir: Path, letters: set):
     return len(changed)
 
 
-async def run(data_dir: Path, feeds_fn, every_s: int = 240):
-    """Keep the warning cache fresh. feeds_fn() gives the warnings feeds in use (e.g. IDZ00060.warnings_wa)."""
+async def run(data_dir: Path, feeds_fn, every_s: int = 240, ftp_ok=lambda: True):
+    """Keep the warning cache fresh. feeds_fn() gives the warnings feeds in use (e.g. IDZ00060.warnings_wa);
+    ftp_ok() is False while the radar poller has found FTP unreachable (skip the cycle then)."""
     await asyncio.to_thread(load, data_dir)
     while True:
+        if not ftp_ok():
+            await asyncio.sleep(60)
+            continue
         try:
             letters = {STATE_LETTER.get(f.rsplit("_", 1)[-1], "") for f in feeds_fn()} - {""}
             n = await asyncio.to_thread(refresh, data_dir, letters)
@@ -134,7 +140,7 @@ def items(feed: str):
     letter = STATE_LETTER.get(feed.rsplit("_", 1)[-1])
     now = datetime.now(timezone.utc)
     out = []
-    for pid, w in state["products"].items():
+    for pid, w in list(state["products"].items()):          # refresh() may be changing it in a thread
         if not w or pid[2] != letter or w.get("phase") in ENDED:
             continue
         if w.get("expiry"):

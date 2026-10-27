@@ -1,8 +1,8 @@
 {
-  "name": "wxdeck-mobile",
+  "name": "radarhound-mobile",
   "version": "1.0.0",
   "private": true,
-  "description": "wxdeck Android app: a thin wrapper that connects to your wxdeck server",
+  "description": "Radarhound Android app: a thin wrapper that connects to your Radarhound server",
   "scripts": {
     "sync": "cap sync android",
     "build:apk": "python3 build_phone.py && cap sync android && cd android && ./gradlew assembleRelease",

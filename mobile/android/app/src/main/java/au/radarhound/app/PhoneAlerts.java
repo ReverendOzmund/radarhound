@@ -1,4 +1,4 @@
-package au.wxdeck.app;
+package au.radarhound.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -26,14 +26,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Background alerts in phone mode (no wxdeck server): BoM's severe warnings that name a place near you,
+ * Background alerts in phone mode (no Radarhound server): BoM's severe warnings that name a place near you,
  * and lightning within 15 km from the LightningMaps feed. Builds the same alert objects as the server's
- * /api/alerts, so AlertService handles them the same way. wxdeck's own radar warnings, storm arrival
+ * /api/alerts, so AlertService handles them the same way. Radarhound's own radar warnings, storm arrival
  * and rain-soon alerts need the radar processing that only runs while the app is open.
  */
 final class PhoneAlerts {
     private static final String BOM = "https://reg.bom.gov.au";
-    private static final String UA = "Mozilla/5.0 (Linux; Android 14) wxdeck-phone";
+    private static final String UA = "Mozilla/5.0 (Linux; Android 14) radarhound-phone";
     private static final Map<String, String> FEED = new HashMap<>();
     static {
         FEED.put("W", "IDZ00060.warnings_wa"); FEED.put("N", "IDZ00054.warnings_nsw"); FEED.put("V", "IDZ00059.warnings_vic");
@@ -135,7 +135,7 @@ final class PhoneAlerts {
         }
         if (n > 0) {
             JSONObject a = new JSONObject();
-            a.put("id", "ltg-" + (first / 1_800_000L)); a.put("source", "wxdeck"); a.put("type", "LTG"); a.put("severity", 1); a.put("near", true);
+            a.put("id", "ltg-" + (first / 1_800_000L)); a.put("source", "radarhound"); a.put("type", "LTG"); a.put("severity", 1); a.put("near", true);
             a.put("title", "Lightning nearby"); a.put("distance_km", Math.round(closest));
             a.put("text", n + " lightning strike" + (n > 1 ? "s" : "") + " within 15 km in the last 10 minutes, the closest " + Math.round(closest) + " km away.");
             a.put("speech", "Lightning within " + Math.max(1, Math.round(closest)) + " kilometres. Head indoors.");
@@ -157,7 +157,7 @@ final class PhoneAlerts {
             wLat = lat; wLon = lon;
             if (thread != null && thread.isAlive() && !moved) return;
             if (thread != null) thread.interrupt();
-            thread = new Thread(Lightning::run, "wxdeck-lightning");
+            thread = new Thread(Lightning::run, "radarhound-lightning");
             thread.setDaemon(true);
             thread.start();
         }

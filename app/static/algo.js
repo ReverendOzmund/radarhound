@@ -1,4 +1,4 @@
-/* wxdeck: pure algorithms shared by the page and the background worker (no DOM, no globals). */
+/* Radarhound: pure algorithms shared by the page and the background worker (no DOM, no globals). */
 "use strict";
 
 const ALGO = (() => {

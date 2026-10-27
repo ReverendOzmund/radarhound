@@ -1,4 +1,4 @@
-"""wxdeck's own automated warnings, modelled on the US National Weather Service.
+"""Radarhound's own automated warnings, modelled on the US National Weather Service.
 
 BoM issues severe thunderstorm warnings, but not radar-indicated tornado warnings, storm-based polygons
 for every strong cell, or impact-based detail. This engine runs after every radar poll and issues:

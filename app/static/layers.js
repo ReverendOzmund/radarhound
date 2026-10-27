@@ -1,4 +1,4 @@
-/* wxdeck: forecast map layers (Windy-style), station plots, sharp town labels, radar mosaic,
+/* Radarhound: forecast map layers (Windy-style), station plots, sharp town labels, radar mosaic,
    lightning sparkline and palette import/export. Uses globals from app.js. */
 "use strict";
 
@@ -508,12 +508,12 @@ function lightningSparkline() {
 
 // ---------------------------------------------------------------- palette import / export
 function exportPalettes() {
-  const out = { wxdeck_palettes: 1, raw: {}, forecast: {} };
+  const out = { radarhound_palettes: 1, raw: {}, forecast: {} };
   for (const [k, m] of Object.entries(MOMENTS)) if (m.sc.stops) out.raw[k] = m.sc.stops;
   for (const [k, l] of Object.entries(FC_LAYERS)) out.forecast[k] = l.sc.stops;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: "application/json" }));
-  a.download = "wxdeck-palettes.json"; a.click();
+  a.download = "radarhound-palettes.json"; a.click();
 }
 function applyPalettes(obj) {
   let n = 0;

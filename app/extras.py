@@ -249,6 +249,11 @@ async def towns(client: httpx.AsyncClient, data_dir: Path, centres, radius_km=80
         r.raise_for_status()
         with zipfile.ZipFile(io.BytesIO(r.content)) as z:
             raw.write_bytes(z.read(f"{country}.txt"))
+    return await asyncio.to_thread(_towns_parse, raw, centres, radius_km, cache, key)
+
+
+def _towns_parse(raw, centres, radius_km, cache, key):
+    """The GeoNames scan (a few seconds): run in a worker thread."""
     out = []
     with raw.open(encoding="utf-8") as f:
         for line in f:
@@ -296,6 +301,11 @@ async def highways(client: httpx.AsyncClient, data_dir: Path, centres, radius_km
         r = await client.get("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_roads.geojson", timeout=300)
         r.raise_for_status()
         raw.write_bytes(r.content)
+    return await asyncio.to_thread(_highways_parse, raw, centres, radius_km, cache, key)
+
+
+def _highways_parse(raw, centres, radius_km, cache, key):
+    """Parsing ~50 MB of GeoJSON: run in a worker thread."""
     d = json.loads(raw.read_text())
     lines = []
     for f in d["features"]:

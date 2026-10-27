@@ -1,4 +1,4 @@
-/* wxdeck core: shared km-based map view, live BoM loop, raw volume viewer,
+/* Radarhound core: shared km-based map view, live BoM loop, raw volume viewer,
    satellite + lightning overlays, readout. Panels (obs/forecast) live in panels.js. */
 "use strict";
 
@@ -17,9 +17,22 @@ const KM_PER_DEG = 111.11;
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const RE43 = 8494.7; // 4/3 earth radius, km
 
+// settings saved under the old name (wxdeck.*) move across once, so the rename keeps everyone's setup
+try {
+  if (!localStorage.getItem("radarhound.migrated")) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("wxdeck.")) {
+        const nk = "radarhound." + k.slice(7);
+        if (localStorage.getItem(nk) === null) localStorage.setItem(nk, localStorage.getItem(k));
+      }
+    }
+    localStorage.setItem("radarhound.migrated", "1");
+  }
+} catch { /* private mode */ }
 const store = {
-  get(k, d) { try { const v = localStorage.getItem("wxdeck." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem("wxdeck." + k, JSON.stringify(v)); } catch { /* ignore */ } },
+  get(k, d) { try { const v = localStorage.getItem("radarhound." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("radarhound." + k, JSON.stringify(v)); } catch { /* ignore */ } },
 };
 
 let fmtTime, fmtDate, fmtH23, fmtDay;
@@ -45,7 +58,7 @@ const PALETTES = {
   "0": {
     source: REFL_BOM,
     tables: {
-      night: { name: "Night (wxdeck)", colors: ["#3b5868", "#4f7d8a", "#5fa0a4", "#5cbf8e", "#7dd36a", "#c3e058", "#f2d64b", "#f2a93b", "#ef7f3a", "#e5533d", "#c42f4f", "#a3226e", "#d04fd0", "#f0a0f0", "#ffffff"] },
+      night: { name: "Night (Radarhound)", colors: ["#3b5868", "#4f7d8a", "#5fa0a4", "#5cbf8e", "#7dd36a", "#c3e058", "#f2d64b", "#f2a93b", "#ef7f3a", "#e5533d", "#c42f4f", "#a3226e", "#d04fd0", "#f0a0f0", "#ffffff"] },
       nws: { name: "NWS dBZ", colors: REFL_DBZ.map(nwsColor) },
       bom: { name: "BoM classic", colors: REFL_BOM },
     },
@@ -392,10 +405,10 @@ const WK = (() => {
     const V = window.WXV || {};
     const w = new Worker(`/static/worker.js?v=${V["worker.js"] || 1}&a=${V["algo.js"] || 1}`);
     const pending = new Map();
-    let id = 0;
+    let id = 0, dead = false;
     w.onmessage = e => { const p = pending.get(e.data.id); if (!p) return; pending.delete(e.data.id); e.data.error ? p.reject(new Error(e.data.error)) : p.resolve(e.data); };
-    w.onerror = () => { for (const p of pending.values()) p.reject(new Error("worker failed")); pending.clear(); };
-    const call = (op, msg = {}, transfer = []) => new Promise((resolve, reject) => {
+    w.onerror = () => { dead = true; for (const p of pending.values()) p.reject(new Error("worker failed")); pending.clear(); };
+    const call = (op, msg = {}, transfer = []) => dead ? Promise.reject(new Error("worker unavailable")) : new Promise((resolve, reject) => {
       const n = ++id; pending.set(n, { resolve, reject, t0: performance.now(), op });
       w.postMessage({ ...msg, op, id: n }, transfer);
     });
@@ -410,7 +423,8 @@ async function decodeBytes(buf, type) {
   const t0 = performance.now();
   let out;
   if (WK) {
-    try { out = (await WK.call("decode", { buf, type }, [buf])).data; } catch { out = null; }
+    const copy = buf.slice(0);                  // the copy goes to the worker; buf stays usable for the fallback
+    try { out = (await WK.call("decode", { buf: copy, type }, [copy])).data; } catch { out = null; }
   }
   if (!out) {
     const img = await createImageBitmap(new Blob([buf], { type: "image/png" }));
@@ -563,6 +577,7 @@ async function enterRaw() {
   play(false);
   if (!R.days.length || R.radar !== S.radar.id) {
     R.radar = S.radar.id; R.days = []; R.metas.clear(); R.sweeps.clear(); R.sweep = null;
+    R.scans = []; R.token++; PANES.forEach(p => { p.sweep = null; });   // nothing from the old radar stays on screen
     rawStatus("Loading archive days…", "busy");
     const r = await fetch(`/api/archive/days?radar=${S.radar.id}`).then(r => r.ok ? r.json() : null).catch(() => null);
     if (!r || !r.days.length) { rawStatus("No archive found for this radar", "err"); return; }
@@ -651,6 +666,7 @@ function getGrid(scan, moment) {
   });
   R.sweeps.set(key, p);
   p.catch(() => R.sweeps.delete(key));
+  while (R.sweeps.size > 60) R.sweeps.delete(R.sweeps.keys().next().value);
   return p;
 }
 
@@ -1047,7 +1063,8 @@ async function refreshSatFrames() {
   if (!satTimeline()) return;
   if (!latest.time) {
     $("frameStamp").innerHTML = "<span>Satellite not available yet, retrying…</span>";
-    setTimeout(refreshSatFrames, 30e3);
+    clearTimeout(refreshSatFrames.t);                    // one retry pending at a time
+    refreshSatFrames.t = setTimeout(refreshSatFrames, 30e3);
     return;
   }
   const n = Math.min(72, Math.max(3, Math.round(S.settings.window * 6)));
@@ -1146,7 +1163,7 @@ function updateLightningSummary() {
   const el = $("ltgSummary");
   if (!S.settings.lightning || !S.cfg) { el.innerHTML = ""; return; }
   const st = S.ltg.status;
-  if (st && !st.connected && st.error) { el.innerHTML = `Lightning feed offline (${st.error}). Retrying.`; return; }
+  if (st && !st.connected && st.error) { el.innerHTML = `Lightning feed offline (${esc(st.error)}). Retrying.`; return; }
   const home = S.cfg.home;
   const near = visibleStrikes().map(s => haversine(home.lat, home.lon, s[1], s[2])).filter(h => h.dist <= 100);
   const w = S.settings.ltgWindow;
@@ -1427,6 +1444,7 @@ function onTimeChanged() {
 
 // ================================================================== playback
 function play(on) {
+  S.playGen = (S.playGen || 0) + 1;             // a newer play/pause retires any loop still waiting on a scan
   S.playing = on;
   $("playBtn").textContent = on ? "❚❚" : "▶";
   clearTimeout(S.timer);
@@ -1442,18 +1460,18 @@ async function tick() {
   if (S.mode === "live") {
     const len = fcTimeline() ? (S.fc.data?.time.length || 0) : satTimeline() ? S.satFrames.length : S.frames.length;
     const cur = fcTimeline() ? S.fc.idx : satTimeline() ? S.satIdx : S.idx;
-    if (!len) return;
+    if (!len) { S.timer = setTimeout(tick, 1000); return; }      // frames not in yet: keep the loop alive
     const next = cur >= len - 1 ? 0 : cur + 1;
     showFrame(next);
     S.timer = setTimeout(tick, S.settings.speed * (next === len - 1 ? 4 : 1));
     return;
   }
-  const R = S.raw;
+  const R = S.raw, gen = S.playGen;
   const next = R.idx >= R.anchor ? R.loopStart : R.idx + 1;
   const started = Date.now();
   prefetchRaw(next + 1, 3);
   await showScan(next, { fromPlay: true });
-  if (!S.playing || S.mode !== "raw") return;
+  if (!S.playing || S.mode !== "raw" || gen !== S.playGen) return;
   const wait = S.settings.speed * (next === R.anchor ? 4 : 1) - (Date.now() - started);
   S.timer = setTimeout(tick, Math.max(0, wait));
 }
@@ -1751,8 +1769,8 @@ document.addEventListener("keydown", e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;       // leave Ctrl+C, Ctrl+P, Alt+Left etc. to the browser
   if (e.code === "Space" && tag === "BUTTON") return;   // Space on a focused button presses it
   if (e.code === "Space") { e.preventDefault(); play(!S.playing); }
-  else if (e.code === "ArrowLeft") step(-1);
-  else if (e.code === "ArrowRight") step(1);
+  else if (e.code === "ArrowLeft") { if (tag === "INPUT") e.preventDefault(); step(-1); }     // a focused slider would move again
+  else if (e.code === "ArrowRight") { if (tag === "INPUT") e.preventDefault(); step(1); }
   else if (e.key === "l" || e.key === "L") $("ltgChip").click();
   else if (e.key === "?") toggleHelp();
   else if (e.key === "x" || e.key === "X") $("xsChip").click();
@@ -1770,8 +1788,9 @@ document.addEventListener("keydown", e => {
   }
   else if (S.mode === "raw" && e.code === "ArrowUp") { e.preventDefault(); changeTilt(1); }
   else if (S.mode === "raw" && e.code === "ArrowDown") { e.preventDefault(); changeTilt(-1); }
-  else if (S.mode === "raw" && (e.key === "r" || e.key === "v" || e.key === "s")) {
-    const want = e.key === "r" ? ["DBZH", "DBZH_CLEAN", "TH"] : e.key === "v" ? ["VRADDH", "VRADH"] : ["SRV"];
+  else if (S.mode === "raw" && ["r", "v", "s"].includes(e.key.toLowerCase())) {
+    const k = e.key.toLowerCase();
+    const want = k === "r" ? ["DBZH", "DBZH_CLEAN", "TH"] : k === "v" ? ["VRADDH", "VRADH"] : ["SRV"];
     const m = want.find(x => [...$("momentSel").options].some(o => o.value === x));
     if (m) { S.settings.moment = m; save(); showScan(S.raw.idx); }
   }
@@ -2235,7 +2254,7 @@ async function exportLoop() {
     const t = currentTime();
     if (t) {
       g.font = `600 ${20 * d}px "Barlow Semi Condensed", sans-serif`;
-      const label = `${fmtDate.format(t)} ${fmtTime.format(t)}  wxdeck`;
+      const label = `${fmtDate.format(t)} ${fmtTime.format(t)}  Radarhound`;
       g.fillStyle = "rgba(15,26,32,.85)"; g.fillRect(10 * d, 10 * d, g.measureText(label).width + 20 * d, 32 * d);
       g.fillStyle = "#d6e2e4"; g.fillText(label, 20 * d, 33 * d);
     }
@@ -2268,7 +2287,7 @@ async function exportLoop() {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   const t = currentTime() || new Date();
-  a.download = `wxdeck-${S.radar.id}-${t.toISOString().slice(0, 16).replace(/[:T]/g, "")}.webm`;
+  a.download = `radarhound-${S.radar.id}-${t.toISOString().slice(0, 16).replace(/[:T]/g, "")}.webm`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10e3);
   S.exporting = false;
@@ -2301,7 +2320,7 @@ async function openRadar(id, opts = {}) {
     Object.assign(S.settings, { radar: id, layout: 2, couplets: true, cells: true, ...(opts.set || {}) });
     S.settings.paneSrc[1].live = "I";
     save();
-    if (opts.lat != null) try { sessionStorage.setItem("wxdeck.zoomTo", JSON.stringify({ lat: opts.lat, lon: opts.lon, km: 45 })); } catch { /* private mode */ }
+    if (opts.lat != null) try { sessionStorage.setItem("radarhound.zoomTo", JSON.stringify({ lat: opts.lat, lon: opts.lon, km: 45 })); } catch { /* private mode */ }
     location.reload();
     return;
   }
@@ -2485,7 +2504,7 @@ async function selectProduct(suffix) {
 // a mode or "Open radar" that reloads the page leaves where to look in sessionStorage
 function applyPendingZoom() {
   let z = null;
-  try { z = JSON.parse(sessionStorage.getItem("wxdeck.zoomTo") || "null"); sessionStorage.removeItem("wxdeck.zoomTo"); } catch { /* none */ }
+  try { z = JSON.parse(sessionStorage.getItem("radarhound.zoomTo") || "null"); sessionStorage.removeItem("radarhound.zoomTo"); } catch { /* none */ }
   if (!z || !Number.isFinite(z.lat) || !Number.isFinite(z.lon)) return;
   const [x, y] = latLonToKm(z.lat, z.lon);
   S.view.cx = x; S.view.cy = y; S.view.scale = Math.min(canvas.width, canvas.height) / 2 / (z.km || 45); draw();
@@ -2524,7 +2543,10 @@ function selectRadar(id) {
 }
 
 async function loadConfig() {
-  const cfg = await fetch("/api/config").then(r => r.json());
+  const res = await fetch("/api/config");
+  if (!res.ok) throw new Error(`config ${res.status}`);       // a login page or server error mustn't replace S.cfg
+  const cfg = await res.json();
+  if (!cfg || !Array.isArray(cfg.radars)) throw new Error("bad config");
   const first = !S.cfg;
   S.cfg = cfg;
   if (first) setupFormatters(cfg.tz);
@@ -2568,8 +2590,8 @@ function clock() { if (fmtTime) $("clock").textContent = fmtTime.format(new Date
 const isPhone = () => window.matchMedia("(max-width: 820px)").matches;
 // in the app wrapper (or any narrow screen) start with the long settings panel folded away
 if (isPhone()) { document.querySelector(".tuning")?.removeAttribute("open"); $("roValue").textContent = "Tap the map"; }
-// running inside the wxdeck Android app: offer a way back to its server picker
-if (/wxdeck-app/.test(navigator.userAgent)) document.body.classList.add("in-app");
+// running inside the Radarhound Android app: offer a way back to its server picker
+if (/radarhound-app/.test(navigator.userAgent)) document.body.classList.add("in-app");
 
 async function boot() {
   bindSettings();

@@ -1,4 +1,4 @@
-/* wxdeck: observation and forecast panels (uses helpers from app.js). */
+/* Radarhound: observation and forecast panels (uses helpers from app.js). */
 "use strict";
 
 // ------------------------------------------------------------------ observations
@@ -48,20 +48,20 @@ function pressureTendency(hist) {
 
 async function loadObs() {
   const data = await fetch("/api/obs").then(r => r.json()).catch(() => null);
-  if (!data) { $("obs").textContent = "Observations unavailable. Check the container can reach reg.bom.gov.au."; return; }
+  if (!data) { $("obs").textContent = "Observations unavailable. Check the server can reach BoM (FTP or website)."; return; }
   $("obs").innerHTML = data.map(st => {
-    if (st.error || !st.latest) return `<div class="station"><div class="station-name">${st.id}</div><div class="station-age">${st.error || "no data"}</div></div>`;
+    if (st.error || !st.latest) return `<div class="station"><div class="station-name">${esc(st.id)}</div><div class="station-age">${esc(st.error || "no data")}</div></div>`;
     const L = st.latest;
     const age = Math.round((Date.now() - new Date(L.t)) / 60000);
     const tend = pressureTendency(st.history);
     const tendTxt = tend == null ? "" : ` ${tend > 0.3 ? "↑" : tend < -0.3 ? "↓" : "→"}${Math.abs(tend).toFixed(1)}`;
     return `<div class="station">
-      <div class="station-head"><span class="station-name">${st.name}</span><span class="station-age">${fmtTime.format(new Date(L.t))}, ${age} min ago</span></div>
+      <div class="station-head"><span class="station-name">${esc(st.name)}</span><span class="station-age${age > 90 ? " stale" : ""}">${fmtTime.format(new Date(L.t))}, ${age < 90 ? `${age} min` : age < 2880 ? `${Math.round(age / 60)} h` : `${Math.round(age / 1440)} days`} ago${age > 90 ? " (old reading)" : ""}</span></div>
       <div class="station-main">
         <div class="big-temp">${fmt(L.temp, 1)}<sup>°C</sup></div>
         ${windDial(L.dir, L.wind)}
         <div class="obs-grid" style="grid-template-columns:repeat(2,1fr);flex:1">
-          <div><span>Wind</span>${L.dir || "–"} ${fmt(L.wind, 0)} km/h</div>
+          <div><span>Wind</span>${esc(L.dir || "–")} ${fmt(L.wind, 0)} km/h</div>
           <div><span>Gust</span>${fmt(L.gust, 0, " km/h")}</div>
         </div>
       </div>

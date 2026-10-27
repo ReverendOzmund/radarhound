@@ -1,7 +1,7 @@
-# Build the wxdeck Android app (APK) with nothing but Docker:
-#   docker build -t wxdeck-apk mobile
-#   docker run --rm -v "${PWD}/mobile/out:/out" wxdeck-apk
-# The signed APK lands in mobile/out/wxdeck.apk.
+# Build the Radarhound Android app (APK) with nothing but Docker:
+#   docker build -t radarhound-apk mobile
+#   docker run --rm -v "${PWD}/mobile/out:/out" radarhound-apk
+# The signed APK lands in mobile/out/radarhound.apk.
 FROM eclipse-temurin:21-jdk
 RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ca-certificates gnupg \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
@@ -17,4 +17,4 @@ RUN npm install --no-audit --no-fund
 COPY . .
 RUN npx cap sync android && cd android && echo "sdk.dir=/opt/android" > local.properties \
  && ./gradlew assembleRelease --no-daemon --console=plain
-CMD ["sh", "-c", "mkdir -p /out && cp android/app/build/outputs/apk/release/app-release.apk /out/wxdeck.apk && echo 'APK copied to /out/wxdeck.apk'"]
+CMD ["sh", "-c", "mkdir -p /out && cp android/app/build/outputs/apk/release/app-release.apk /out/radarhound.apk && echo 'APK copied to /out/radarhound.apk'"]

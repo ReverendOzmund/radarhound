@@ -1,12 +1,13 @@
+name: radarhound
 services:
-  wxdeck:
+  radarhound:
     build: .
-    container_name: wxdeck
+    container_name: radarhound
     restart: unless-stopped
     ports:
       - "8686:8686"
     volumes:
-      - wxdeck-data:/data
+      - radarhound-data:/data
     environment:
       # Where BoM data comes from: "auto" (BoM's anonymous FTP feed, falling back to the website if FTP is
       # blocked on your network), "ftp" or "web". BoM blocks busy addresses on its website, FTP is the
@@ -37,10 +38,10 @@ services:
       BOM_AREAS: "Lower West,Perth Metropolitan"
       # Voice for spoken alerts (any Piper voice name; downloaded once into the data volume)
       ALERT_VOICE: "en_GB-alan-medium"
-      # wxdeck's own automated (unofficial) radar-indicated warnings and model watches
-      WXDECK_WARNINGS: "on"
+      # Radarhound's own automated (unofficial) radar-indicated warnings and model watches
+      RADARHOUND_WARNINGS: "on"
       # Password for the whole site (leave empty on a home network; set one before exposing it)
-      WXDECK_PASSWORD: ""
+      RADARHOUND_PASSWORD: ""
       # Free key from https://api.windy.com to show public webcams (optional)
       WINDY_WEBCAMS_KEY: ""
       # "Lightning nearby" alert distance in km
@@ -57,4 +58,5 @@ services:
       LIGHTNING_RETENTION_DAYS: "30"
 
 volumes:
-  wxdeck-data:
+  radarhound-data:
+    name: radarhound-data

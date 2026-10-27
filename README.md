@@ -1,4 +1,4 @@
-# wxdeck
+# Radarhound
 
 **A RadarScope + Windy style weather workstation for Australia that you run yourself.** Live BoM radar
 and Doppler, every radar stitched into one map, raw dual-pol volumes, Himawari satellite, live lightning,
@@ -6,20 +6,20 @@ Windy-style forecast maps, soundings, storm tracking, supercell and tornado tool
 NWS-style warnings with spoken alerts. Free data sources, no API keys, one Docker container. Plus an
 Android app that connects to your server or runs the whole thing on the phone.
 
-![wxdeck: national view with Himawari infrared, the rain-in-the-next-hour card and storm threat ratings](docs/img/satellite.jpg)
+![Radarhound: national view with Himawari true colour, the rain-in-the-next-hour card and model watches](docs/img/satellite.jpg)
 
-> wxdeck is a hobby project. Its own warnings are automated and **unofficial**: always follow the
+> Radarhound is a hobby project. Its own warnings are automated and **unofficial**: always follow the
 > Bureau of Meteorology. Weather data belongs to its providers and is for your personal use; see
-> [NOTICE.md](NOTICE.md) before running wxdeck anywhere other people can reach it.
+> [NOTICE.md](NOTICE.md) before running Radarhound anywhere other people can reach it.
 
-Project page: https://reverendozmund.github.io/wxdeck/
+Project page: https://reverendozmund.github.io/radarhound/
 
 ## Quick start
 
 You need [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on Windows or macOS).
 
-    git clone https://github.com/ReverendOzmund/wxdeck.git
-    cd wxdeck
+    git clone https://github.com/ReverendOzmund/radarhound.git
+    cd radarhound
     docker compose up -d --build
 
 Open http://localhost:8686. The welcome tour asks how much detail you want (Simple, Storm chaser or
@@ -28,8 +28,8 @@ and `WARNINGS_FEED` (your state) in `docker-compose.yml`; see [Configure](#confi
 
 | | |
 |---|---|
-| ![Command search](docs/img/command-search.jpg) | ![Phone app start screen](docs/img/app-start.jpg) |
-| Ctrl+K searches layers, radars, modes, settings and places | The Android app: your server, or no server at all |
+| ![Radar picker: your radars, nearest first, then by state](docs/img/radar-picker.jpg) | ![Phone app start screen](docs/img/app-start.jpg) |
+| The radar picker: search, pin your radars (★), nearest first | The Android app: your server, or no server at all |
 
 ## What's in it
 
@@ -37,7 +37,7 @@ and `WARNINGS_FEED` (your state) in `docker-compose.yml`; see [Configure](#confi
   a seamless all-Australia map; raw volumes from BoM's Level 1 archive (every tilt, dealiased velocity,
   dual-pol, storm-relative velocity, cross-sections, echo tops, VIL, hail size, rotation detection)
 - **Storms:** cell tracking with arrival times, live Doppler couplets, supercell and tornado ratings,
-  wxdeck's own tornado / severe thunderstorm / flash flood warnings and model watches, a verification log
+  Radarhound's own tornado / severe thunderstorm / flash flood warnings and model watches, a verification log
 - **Satellite:** Himawari-9 raw infrared and water vapour (real cloud-top temperatures), GeoColor, day
   cloud phase, night microphysics, dust, air mass
 - **Lightning:** Blitzortung's community network, with thunder rings and nearby-strike alerts
@@ -51,26 +51,26 @@ and `WARNINGS_FEED` (your state) in `docker-compose.yml`; see [Configure](#confi
 ## Phone app and PC
 
 ### Android app
-1. Start wxdeck on your PC or server (see Run below).
+1. Start Radarhound on your PC or server (see Run below).
 2. On the phone, open `http://<server-ip>:8686/app` in Chrome and tap **Download for Android**.
-3. Open the downloaded `wxdeck.apk`. The first time, Android asks you to allow installs from Chrome.
-4. Open wxdeck and enter the server address shown on that page (for example `http://192.168.1.50:8686`).
-   The app remembers it; tap ⇄ at the top of wxdeck to switch servers.
+3. Open the downloaded `radarhound.apk`. The first time, Android asks you to allow installs from Chrome.
+4. Open Radarhound and enter the server address shown on that page (for example `http://192.168.1.50:8686`).
+   The app remembers it; tap ⇄ at the top of Radarhound to switch servers.
 
 ### Warning alerts (tone + voice)
 - **Phone app (Android):** with "Warning alerts when the app is closed" ticked on the start screen, the
-  app keeps a small "wxdeck is watching" notification and checks your server every minute. A new warning
+  app keeps a small "Radarhound is watching" notification and checks your server every minute. A new warning
   near home (or any warning, if you choose) pops up a notification, plays an attention tone and reads it
-  out: "wxdeck alert. Tornado warning issued for Perth, Cannington, Bentley and Victoria Park, until
+  out: "Radarhound alert. Tornado warning issued for Perth, Cannington, Bentley and Victoria Park, until
   7:32 PM. This includes your location." Tornado warnings use the alarm volume, so they are heard on
   silent. Allow notifications, and say yes to "ignore battery optimisation" so Android doesn't put the
-  check to sleep. To change these options later, tap the switch-server button at the top of wxdeck.
+  check to sleep. To change these options later, tap the switch-server button at the top of Radarhound.
 - **Web page:** Display, Alerts. Same tone and voice while the page is open (touch the page once after
   opening it; browsers block sound until you do). "Test alert" plays a sample.
-- Alerts include BoM's own severe warnings (labelled BoM) as well as wxdeck's, unless you untick it.
-- What alerts: wxdeck tornado, severe thunderstorm and flash flood warnings; BoM severe thunderstorm,
+- Alerts include BoM's own severe warnings (labelled BoM) as well as Radarhound's, unless you untick it.
+- What alerts: Radarhound tornado, severe thunderstorm and flash flood warnings; BoM severe thunderstorm,
   severe weather (damaging winds, heavy rain, etc.), fire weather, heatwave, cyclone and tsunami
-  warnings, and moderate or major flood warnings; wxdeck's model watches (damaging wind, severe
+  warnings, and moderate or major flood warnings; Radarhound's model watches (damaging wind, severe
   thunderstorm, tornado, extreme heat, fire weather) covering home; and damaging gusts (90 km/h or
   more) measured at weather stations near home.
 - BoM warnings count as near home when the warning page names a town within your alert distance; you
@@ -99,7 +99,7 @@ It falls back to the global feed if the area feed is down. Blitzortung coverage 
 in the east, so some strikes you see may still not be located.
 
 ### iPhone and iPad
-Open the server in Safari, tap Share, then **Add to Home Screen**. wxdeck opens full screen like an app.
+Open the server in Safari, tap Share, then **Add to Home Screen**. Radarhound opens full screen like an app.
 
 ### Using it away from home (Tailscale, free)
 1. Install Tailscale on the server and on your phone, and sign in to the same account on both.
@@ -109,30 +109,30 @@ Open the server in Safari, tap Share, then **Add to Home Screen**. wxdeck opens 
    Because it's https, the "Me" location button and app install prompts work too.
 
 ### PC (Windows, macOS, Linux)
-Install Docker Desktop, unzip wxdeck, then in the wxdeck folder run `docker compose up -d --build` and
+Install Docker Desktop, unzip Radarhound, then in the Radarhound folder run `docker compose up -d --build` and
 open `http://localhost:8686`. In Chrome or Edge, the install icon in the address bar turns it into a
 desktop app window.
 
 ### Rebuilding the Android app yourself (optional)
-A ready-built APK is in `app/static/downloads/wxdeck.apk` (and on the
-[Releases](https://github.com/ReverendOzmund/wxdeck/releases) page). To build your own, make your own
+A ready-built APK is in `app/static/downloads/radarhound.apk` (and on the
+[Releases](https://github.com/ReverendOzmund/radarhound/releases) page). To build your own, make your own
 signing key first; the original key is not in this repository:
 
-    keytool -genkeypair -v -keystore mobile/wxdeck-release.jks -alias wxdeck -keyalg RSA -keysize 2048 -validity 10000
+    keytool -genkeypair -v -keystore mobile/radarhound-release.jks -alias radarhound -keyalg RSA -keysize 2048 -validity 10000
 
 then create `mobile/keystore.properties` with:
 
-    storeFile=../../wxdeck-release.jks
+    storeFile=../../radarhound-release.jks
     storePassword=YOUR_PASSWORD
-    keyAlias=wxdeck
+    keyAlias=radarhound
     keyPassword=YOUR_PASSWORD
 
 and build with only Docker:
 
-    docker build -t wxdeck-apk mobile
-    docker run --rm -v "${PWD}/mobile/out:/out" wxdeck-apk
+    docker build -t radarhound-apk mobile
+    docker run --rm -v "${PWD}/mobile/out:/out" radarhound-apk
 
-Copy `mobile/out/wxdeck.apk` to `app/static/downloads/` and rebuild the server. Both key files are in
+Copy `mobile/out/radarhound.apk` to `app/static/downloads/` and rebuild the server. Both key files are in
 `.gitignore`: never commit them. An app signed with a different key can't install over one signed with
 another, so uninstall the old app first. If you change the page (`app/static`), run
 `python3 mobile/build_phone.py` first so phone mode gets the same page.
@@ -160,7 +160,7 @@ Edit the `environment:` block in docker-compose.yml, then run `docker compose up
 | LIGHTNING_RETENTION_DAYS | How long strikes are kept |
 | NATIONAL | on/off: the all-Australia mosaic and seamless map (default on) |
 | NATIONAL_POLL_SECONDS | How often the national mosaic is rebuilt (default 360) |
-| WXDECK_WARNINGS | on/off: wxdeck's own automated warnings and watches (default on) |
+| RADARHOUND_WARNINGS | on/off: Radarhound's own automated warnings and watches (default on) |
 | WARNINGS_FEED | Your state's BoM warnings (from FTP warning products, or the website RSS): IDZ00060.warnings_wa (WA), IDZ00054.warnings_nsw, IDZ00059.warnings_vic, IDZ00056.warnings_qld, IDZ00057.warnings_sa, IDZ00058.warnings_tas, IDZ00055.warnings_nt, IDZ00085.warnings_act |
 | BOM_AREAS | Extra BoM district names that count as "near home" for alerts, comma separated (e.g. `lower west, perth metropolitan`) |
 | OBS_MAP_PRODUCT | BoM state-wide latest observations for the station map: IDW60920 (WA); IDN/IDV/IDQ/IDS/IDT/IDD60920 elsewhere |
@@ -169,7 +169,7 @@ Edit the `environment:` block in docker-compose.yml, then run `docker compose up
 | GEOCODE_COUNTRY | Country searched by Find and the home search (default `au`) |
 | ALERT_VOICE | Piper voice for spoken alerts (default `en_GB-alan-medium`; downloaded once into the data folder) |
 | DATA_DIR | Where frames, settings and caches live (default `/data`, the Docker volume) |
-| WXDECK_PASSWORD | Ask for a password before anything loads (set it before opening wxdeck to the internet). The phone app takes it on its start screen |
+| RADARHOUND_PASSWORD | Ask for a password before anything loads (set it before opening Radarhound to the internet). The phone app takes it on its start screen |
 | WINDY_WEBCAMS_KEY | Free Windy Webcams API key: turns on the Webcams layer |
 | LIGHTNING_ALERT_KM | Distance for the "lightning nearby" alert (default 15) |
 
@@ -200,7 +200,7 @@ Edit the `environment:` block in docker-compose.yml, then run `docker compose up
 - **Favourites**: in the command search press Shift+Enter (or the ☆) to pin anything as a chip above the
   map; right-click or long-press a chip to remove it.
 - **Legend**: tap it to switch between words, mm/h and dBZ.
-- **Warning tags**: wxdeck warnings show their threats at a glance (HAIL, ROTATION ΔV, FLASH FLOODING…).
+- **Warning tags**: Radarhound warnings show their threats at a glance (HAIL, ROTATION ΔV, FLASH FLOODING…).
 - **Kiosk view** (`/?kiosk=1`, or More, Kiosk view): radar, rain card and warnings only, big, looping and
   kept awake. For a wall tablet or spare screen; double-click for full screen.
 - **Quiet hours** (web Alerts tab and the app's start screen): lightning, storm-approaching and rain
@@ -216,26 +216,26 @@ and allow location "all the time"; in a browser it needs https.
 
 ## Warning verification (Pro)
 
-Every wxdeck warning is logged with its peak core, rotation and lightning, the towns it covered, storm
+Every Radarhound warning is logged with its peak core, rotation and lightning, the towns it covered, storm
 reports inside it, and whether BoM warned for those towns. The Warning verification panel shows the last
-30 days, plus BoM thunderstorm warnings wxdeck didn't match. Use it (and pinned-point storm reports) to
+30 days, plus BoM thunderstorm warnings Radarhound didn't match. Use it (and pinned-point storm reports) to
 tune the thresholds.
 
 ## Password
 
-Set `WXDECK_PASSWORD` in docker-compose.yml and recreate the container. Browsers get a login page (the
+Set `RADARHOUND_PASSWORD` in docker-compose.yml and recreate the container. Browsers get a login page (the
 login lasts about a year); the phone app's start screen has a Password box for its background alerts.
 
 ## Phone app: server mode or phone mode
 
 The app's start screen offers two ways to run, and ⇄ at the top switches between them any time:
 
-- **My wxdeck server**: the full build, everything above.
-- **Run on this phone**: the same wxdeck page, with no server. A small stand-in for the server inside the
+- **My Radarhound server**: the full build, everything above.
+- **Run on this phone**: the same Radarhound page, with no server. A small stand-in for the server inside the
   app fetches straight from BoM, Open-Meteo, NASA, LightningMaps and the Aviation Weather Center, and the
   storm logic runs on the phone. You get live radar at every range plus Doppler (BoM's last hour or so,
   building up while the app stays open), the all-Australia mosaic (stitched on the phone from every BoM
-  radar; about 30 seconds the first time), storm cells and couplets, wxdeck's own warnings and model
+  radar; about 30 seconds the first time), storm cells and couplets, Radarhound's own warnings and model
   watches, lightning, forecast map layers, soundings, the rain-in-the-next-hour card, BoM warnings,
   station and airport obs, NASA satellite, Find, Read me today and all the alerts while it's open.
   With the app closed, phone mode alerts cover BoM warnings near you and lightning within 15 km.
@@ -258,6 +258,16 @@ or type coordinates, pick on the map, or use your location (browsers
 only allow that over https or on localhost). The same dialog sets which BoM radars to follow. You can
 also pin a point and choose "make home" or "forecast here". Everything is saved in the data volume
 (settings.json), so rebuilding the container keeps it.
+
+The radar picker (click the radar name at the top, or press R) lists your pinned radars, the four
+nearest to home, then every BoM radar grouped by state, with a live / loading dot and the distance from
+home. Type to search by name, state or IDR number. The star pins a radar to Your radars (up to 8): pinned
+radars keep every range, Doppler, rainfall and the full history, and start downloading straight away.
+Press * in the search box to pin the highlighted one.
+
+The pill next to the clock shows feed health: Live, Delayed or Problem. Click it to see when each radar
+last sent a frame, the national mosaic, BoM warnings and lightning, and whether BoM data is coming over
+FTP or the website.
 
 In Raw volume mode, "Save case" bookmarks the current scan; the Saved cases menu jumps back to it.
 
@@ -292,10 +302,10 @@ forecast hours.
 - Favourite spots: pin a point and "save spot"; pick spots from the forecast panel menu.
 
 ## Warnings
-The side panel lists current BoM warnings for your state from BoM's public RSS (WARNINGS_FEED,
-IDZ00060.warnings_wa for WA; IDZ00054 NSW, 55 NT, 56 QLD, 57 SA, 58 TAS, 59 VIC, 85 ACT). A badge on the
-toolbar shows the count and turns red for thunderstorm, severe weather, cyclone or tsunami warnings.
-Each one links to the full BoM text. (BoM's newer JSON API forbids outside use, so wxdeck sticks to RSS.)
+The side panel lists current BoM warnings for your state (WARNINGS_FEED: IDZ00060.warnings_wa for WA;
+IDZ00054 NSW, 55 NT, 56 QLD, 57 SA, 58 TAS, 59 VIC, 85 ACT). They're built from the warning products on BoM's
+anonymous FTP feed, or BoM's RSS when FTP isn't available. A badge on the toolbar shows the count and turns
+red for thunderstorm, severe weather, cyclone or tsunami warnings. Each one links to the full BoM text.
 
 ## More satellite and map options
 - Night microphysics (fog and low cloud at night) and Dust RGB composites, built from the raw 2 km
@@ -304,7 +314,7 @@ Each one links to the full BoM text. (BoM's newer JSON API forbids outside use, 
 - Highways: Natural Earth major and secondary highways (a ~50 MB file is downloaded once and trimmed).
 
 ## Install as an app
-wxdeck has a web app manifest, so phones and desktop Chrome/Edge offer "Install" when the page is
+Radarhound has a web app manifest, so phones and desktop Chrome/Edge offer "Install" when the page is
 served over https (for example behind a reverse proxy) or opened on localhost.
 
 ## Forecast view, second pass
@@ -332,12 +342,12 @@ served over https (for example behind a reverse proxy) or opened on localhost.
   model, and a time-height chart of humidity, isotherms and winds for the next 48 hours.
 
 ## All of Australia
-Pick "Australia (all radars)" in the radar menu. wxdeck polls the 512 km composite of every BoM radar
+Pick "Australia (all radars)" in the radar menu. Radarhound polls the 512 km composite of every BoM radar
 (about 66) and stitches a national mosaic every ~6 minutes (5 km pixels, strongest echo wins where
 radars overlap). The national view has its own terrain basemap, coastlines, state borders and town
 labels, and lightning, warnings (all states), station obs (all states), satellite, fires, forecast
 layers and storm-cell tracking all switch to continent-wide coverage. Raw volumes stay per radar.
-Wide satellite and coastline images are now reprojected onto wxdeck's map projection, so they line
+Wide satellite and coastline images are now reprojected onto Radarhound's map projection, so they line
 up with radar and towns even thousands of kilometres from the centre.
 
 ## Supercell and tornado toolkit
@@ -364,8 +374,8 @@ Jet stream, Synoptic chart, Satellite and lightning, Fire weather, Smoke and air
 flooding, Surf and sea. "Save current setup" stores your own. In Forecast view, each extra pane can
 show another model or another layer (e.g. SCP | STP | shear | helicity).
 
-## wxdeck warnings (automated, unofficial)
-After every radar poll wxdeck runs its own warning engine, in the spirit of the US National Weather
+## Radarhound warnings (automated, unofficial)
+After every radar poll Radarhound runs its own warning engine, in the spirit of the US National Weather
 Service, for things BoM doesn't issue:
 - Tornado warning: a cyclonic Doppler couplet (dV >= 100 km/h) inside a >= 50 dBZ core.
 - Severe thunderstorm warning: a real >= 55 dBZ core (or >= 50 dBZ with rotation or frequent
@@ -387,7 +397,20 @@ A Fire danger (FFDI) forecast layer was added too.
 ## Updating
 App files are stamped with a fingerprint of their contents, so after `docker compose up -d --build` a
 normal reload picks up the new version (no stale cached scripts). The phone app updates itself the
-same way; the APK only needs reinstalling if `app/static/downloads/wxdeck.apk` changes.
+same way; the APK only needs reinstalling if `app/static/downloads/radarhound.apk` changes.
+
+### Coming from wxdeck
+Radarhound was called wxdeck. The old environment names (WXDECK_PASSWORD, WXDECK_WARNINGS) still work,
+browser settings move across by themselves, and the server still answers the old app's links. Docker
+names changed, so copy your saved data (home, radars, history) into the new volume once:
+
+    docker compose down
+    docker volume create radarhound-data
+    docker run --rm -v wxdeck_wxdeck-data:/from -v radarhound-data:/to alpine sh -c "cp -a /from/. /to/"
+    docker compose up -d --build
+
+(`docker volume ls` shows the old volume's exact name if yours differs.) The Android app is a new app
+(au.radarhound.app): install it, then uninstall the old wxdeck app.
 
 ## Disk use
 Your own radars keep RETENTION_HOURS of frames. Radars followed only for storms or the seamless map
@@ -397,15 +420,15 @@ keep 6 hours, and the national mosaic's source images 2 hours.
 - Press P (or Display, Performance overlay) for frame rate, draw and decode times, and how long each
   API call took.
 - Raw volumes render on the GPU (WebGL). If the GPU turns out slower than the CPU (software
-  emulation), wxdeck switches to the CPU by itself; "GPU rendering" in Display forces it off.
+  emulation), Radarhound switches to the CPU by itself; "GPU rendering" in Display forces it off.
 - Radar loops arrive in one request and are decoded in a background worker, along with storm-cell
   detection and the live couplet finder, so the map never stalls.
 - Satellite images are WebP (about 8x smaller), forecast grids and lightning come as compact binary,
-  and on https or localhost the app shell is cached so wxdeck opens instantly.
+  and on https or localhost the app shell is cached so Radarhound opens instantly.
 
 ## Seamless all-Australia radar
 "Australia (all radars)" is now one linked map. Zoomed out you see the 5 km national mosaic; zoom in
-anywhere and wxdeck pulls the live loops of the radars in view (128 km near each radar, 256 km filling
+anywhere and Radarhound pulls the live loops of the radars in view (128 km near each radar, 256 km filling
 the gaps between them) and blends them on the GPU, each reprojected so neighbouring radars line up,
 with the nearest radar winning where they overlap. Radars are followed in the background for 2 hours
 as you pan. The readout names the radar it's reading from. Turn it off with "Seamless national" in
@@ -414,12 +437,12 @@ looking, and the national map stays one pane (extra panes would only repeat the 
 
 ## Storm threats: supercell and tornado ratings
 Every storm with a 50+ dBZ core gets two plain ratings, Supercell and Tornado (low / moderate / high),
-shown on wxdeck warnings, in the Storm threats panel and as tags on the map, with a "Why" list:
+shown on Radarhound warnings, in the Storm threats panel and as tags on the map, with a "Why" list:
 - Environment at the storm: SCP, STP, 0-6 km shear, 0-1 km helicity and cloud-base height. Around
-  active storms wxdeck fetches a fine 50 km model grid (refreshed every 3 hours).
+  active storms Radarhound fetches a fine 50 km model grid (refreshed every 3 hours).
 - What the radar shows: core size, how long the storm has lasted, whether it moves left of the mean
   wind (classic Southern Hemisphere supercell motion), lightning rate, and rotation on Doppler.
-- The national mosaic has no Doppler, so storms seen only there say "rotation unknown". wxdeck then
+- The national mosaic has no Doppler, so storms seen only there say "rotation unknown". Radarhound then
   follows the nearest BoM radar automatically (when it is within 150 km and the storm is warned, has
   lightning or rates moderate+), and each card has an "Open <radar> radar (Doppler)" button that
   switches to that radar's live reflectivity and Doppler side by side, zoomed onto the storm.

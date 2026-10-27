@@ -15,7 +15,7 @@ import re
 import threading
 import time
 
-log = logging.getLogger("wxdeck.ftp")
+log = logging.getLogger("radarhound.ftp")
 
 HOST = os.getenv("BOM_FTP_HOST", "ftp.bom.gov.au")
 PORT = int(os.getenv("BOM_FTP_PORT", "21"))

@@ -1,4 +1,4 @@
-package au.wxdeck.app;
+package au.radarhound.app;
 
 import android.Manifest;
 import android.content.Context;

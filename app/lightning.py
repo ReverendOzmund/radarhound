@@ -17,7 +17,7 @@ from pathlib import Path
 
 import websockets
 
-log = logging.getLogger("wxdeck.lightning")
+log = logging.getLogger("radarhound.lightning")
 
 HOSTS = [h.strip() for h in os.getenv("LIGHTNING_HOSTS", "ws1,ws7,ws8").split(",") if h.strip()]
 RADIUS_KM = float(os.getenv("LIGHTNING_RADIUS_KM", "800"))
@@ -122,10 +122,12 @@ async def collector(store: Store, centres):
     fails = 0
     while True:
         if fails < 3:
+            t0 = time.time()
             ok = await _lightningmaps(store, centres)
+            if ok and time.time() - t0 < 30:          # connected but dropped straight away: count it as a failure
+                ok = False
             fails = 0 if ok else fails + 1
-            if not ok:
-                await asyncio.sleep(10)
+            await asyncio.sleep(10 if not ok else 2)
         else:
             await _blitzortung(store, centres, minutes=15)
             fails = 0

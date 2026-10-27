@@ -1,4 +1,4 @@
-package au.wxdeck.app;
+package au.radarhound.app;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;

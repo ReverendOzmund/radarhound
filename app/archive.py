@@ -19,7 +19,7 @@ import h5py
 import httpx
 import numpy as np
 
-log = logging.getLogger("wxdeck.archive")
+log = logging.getLogger("radarhound.archive")
 
 NCI = os.getenv("ARCHIVE_BASE", "https://thredds.nci.org.au/thredds")
 CACHE_GB = float(os.getenv("ARCHIVE_CACHE_GB", "5"))

@@ -1,4 +1,4 @@
-/* wxdeck background worker: PNG decode -> palette indices, storm cells and Doppler couplets,
+/* Radarhound background worker: PNG decode -> palette indices, storm cells and Doppler couplets,
    so the map never stalls while frames arrive. */
 "use strict";
 importScripts(`/static/algo.js?v=${new URLSearchParams(self.location.search).get("a") || 1}`);

@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>wxdeck: a self-hosted radar and storm workstation for Australia</title>
+<title>Radarhound: a self-hosted radar and storm workstation for Australia</title>
 <meta name="description" content="Live BoM radar and Doppler, raw volumes, Himawari satellite, lightning, Windy-style forecasts, storm tracking and NWS-style alerts. Self-hosted, free data, Android app.">
-<meta property="og:title" content="wxdeck">
+<meta property="og:title" content="Radarhound">
 <meta property="og:description" content="A RadarScope + Windy style weather workstation for Australia that you run yourself.">
 <meta property="og:image" content="img/satellite.jpg">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛈️</text></svg>">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
@@ -21,7 +21,7 @@
   .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
   header.top { position: sticky; top: 0; z-index: 5; background: rgba(15,26,32,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
   header.top .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
-  .brand { color: var(--amber); font: 700 24px "Barlow Semi Condensed", sans-serif; letter-spacing: .02em; text-decoration: none; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--amber); font: 700 24px "Barlow Semi Condensed", sans-serif; letter-spacing: .02em; text-decoration: none; }
   nav { display: flex; gap: 18px; margin-left: auto; font-size: 15px; }
   nav a { color: var(--dim); text-decoration: none; }
   nav a:hover { color: var(--text); }
@@ -64,9 +64,9 @@
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <a class="brand" href="#">wxdeck</a>
+  <a class="brand" href="#"><img src="img/logo.svg" alt="" width="34" height="34">Radarhound</a>
   <nav><a href="#features">Features</a><a href="#modes">Server or phone</a><a href="#install">Install</a><a href="#data">Data</a>
-    <a class="gh" href="https://github.com/ReverendOzmund/wxdeck">GitHub</a></nav>
+    <a class="gh" href="https://github.com/ReverendOzmund/radarhound">GitHub</a></nav>
 </div></header>
 
 <main class="wrap">
@@ -77,9 +77,9 @@
       read out loud. Free data, no API keys, one Docker container, plus an Android app.</p>
     <div class="cta">
       <a class="btn primary" href="#install">Get started</a>
-      <a class="btn ghost" href="https://github.com/ReverendOzmund/wxdeck/releases">Download the Android app</a>
+      <a class="btn ghost" href="https://github.com/ReverendOzmund/radarhound/releases">Download the Android app</a>
     </div>
-    <figure class="shot"><img src="img/satellite.jpg" alt="wxdeck showing the national view with Himawari infrared, a rain-in-the-next-hour card and storm threat ratings" width="1600" height="978"></figure>
+    <figure class="shot"><img src="img/satellite.jpg" alt="Radarhound showing the national view with Himawari infrared, a rain-in-the-next-hour card and storm threat ratings" width="1600" height="978"></figure>
     <p class="caption">The national view with Himawari infrared, the rain-in-the-next-hour card and storm threat ratings.</p>
   </div>
 
@@ -90,7 +90,7 @@
       <div class="card"><span class="k">Radar</span><h3>Every BoM radar, one map</h3><p>64 to 512 km loops, Doppler wind and rainfall, a seamless all-Australia mosaic, 48 hours of history, up to four synced panes.</p></div>
       <div class="card"><span class="k">Raw volumes</span><h3>Dual-pol, every tilt</h3><p>Dealiased and storm-relative velocity, ZDR, CC, KDP, hydrometeor class, cross-sections, echo tops, VIL, MESH hail size.</p></div>
       <div class="card"><span class="k">Severe weather</span><h3>Supercell and tornado tools</h3><p>Storm cells with arrival times, live Doppler couplets, mesocyclone and debris detection, SCP / STP / helicity overlays, threat ratings with reasons.</p></div>
-      <div class="card"><span class="k">Warnings</span><h3>NWS-style, spoken</h3><p>wxdeck's own tornado, severe thunderstorm and flash flood polygons and model watches, plus BoM's warnings, with a tone and voice: "Severe thunderstorm warning issued for…"</p></div>
+      <div class="card"><span class="k">Warnings</span><h3>NWS-style, spoken</h3><p>Radarhound's own tornado, severe thunderstorm and flash flood polygons and model watches, plus BoM's warnings, with a tone and voice: "Severe thunderstorm warning issued for…"</p></div>
       <div class="card"><span class="k">Satellite</span><h3>Himawari, decoded</h3><p>Raw infrared with real cloud-top temperatures, water vapour, GeoColor, day cloud phase, night microphysics, dust and air mass.</p></div>
       <div class="card"><span class="k">Lightning</span><h3>Live strikes and thunder rings</h3><p>Community lightning with rings that travel at the speed of sound, strike density and "lightning within 15 km" alerts.</p></div>
       <div class="card"><span class="k">Forecasts</span><h3>Windy-style maps</h3><p>30+ layers with wind particles, CAPE, shear, upper air, sea and air quality, model comparison and skew-T soundings.</p></div>
@@ -105,13 +105,13 @@
     <div class="split">
       <div class="two">
         <div class="card"><span class="k">Server mode</span><h3>The full build</h3>
-          <p>Run wxdeck in Docker on a home PC or server; the app and any browser connect to it.</p>
+          <p>Run Radarhound in Docker on a home PC or server; the app and any browser connect to it.</p>
           <ul><li>48-hour history and raw volumes</li><li>Raw Himawari bands</li><li>Alerts from the server, even with the app closed</li><li>Works away from home with Tailscale</li></ul></div>
         <div class="card"><span class="k">Phone mode</span><h3>No server at all</h3>
-          <p>The same wxdeck page runs inside the app and fetches its own data.</p>
-          <ul><li>Live radar, Doppler and the national mosaic</li><li>wxdeck's warnings, storm cells and nowcast</li><li>Lightning, forecasts, satellite</li><li>BoM and lightning alerts with the app closed</li></ul></div>
+          <p>The same Radarhound page runs inside the app and fetches its own data.</p>
+          <ul><li>Live radar, Doppler and the national mosaic</li><li>Radarhound's warnings, storm cells and nowcast</li><li>Lightning, forecasts, satellite</li><li>BoM and lightning alerts with the app closed</li></ul></div>
       </div>
-      <figure style="margin:0"><img src="img/app-start.jpg" alt="The wxdeck Android app start screen, choosing between your server and running on the phone" width="600" height="1298"></figure>
+      <figure style="margin:0"><img src="img/app-start.jpg" alt="The Radarhound Android app start screen, choosing between your server and running on the phone" width="600" height="1298"></figure>
     </div>
   </section>
 
@@ -119,25 +119,25 @@
     <h2>Install</h2>
     <ol class="steps">
       <li>Install <a href="https://docs.docker.com/get-docker/">Docker</a> (Docker Desktop on Windows or macOS).</li>
-      <li>Get wxdeck and start it:
-        <pre>git clone https://github.com/ReverendOzmund/wxdeck.git
-cd wxdeck
+      <li>Get Radarhound and start it:
+        <pre>git clone https://github.com/ReverendOzmund/radarhound.git
+cd radarhound
 docker compose up -d --build</pre></li>
       <li>Open <code>http://localhost:8686</code>. The welcome tour asks how much detail you want and where home is.
         Set your local radars and state warnings feed in <code>docker-compose.yml</code> (see the
-        <a href="https://github.com/ReverendOzmund/wxdeck#configure">README</a>).</li>
+        <a href="https://github.com/ReverendOzmund/radarhound#configure">README</a>).</li>
       <li>Phone: open <code>http://&lt;your-server&gt;:8686/app</code> on Android, or grab the APK from
-        <a href="https://github.com/ReverendOzmund/wxdeck/releases">Releases</a> and choose "Run on this phone".</li>
+        <a href="https://github.com/ReverendOzmund/radarhound/releases">Releases</a> and choose "Run on this phone".</li>
     </ol>
-    <figure class="shot" style="margin-top:20px"><img src="img/command-search.jpg" alt="The command search listing modes, layers and places for the word storm" width="1600" height="978"></figure>
+    <figure class="shot" style="margin-top:20px"><img src="img/radar-picker.jpg" alt="The radar picker: pinned radars, the nearest radars to home, then every BoM radar by state" width="1600" height="978"></figure>
     <p class="caption">Ctrl+K: one search box for modes, layers, radars, settings and places.</p>
   </section>
 
   <section id="data">
     <h2>Data and fine print</h2>
-    <p class="note"><b>Unofficial.</b> wxdeck's own warnings, watches and storm ratings come from a hobby algorithm and can be wrong,
+    <p class="note"><b>Unofficial.</b> Radarhound's own warnings, watches and storm ratings come from a hobby algorithm and can be wrong,
       late or missing. Always follow the Bureau of Meteorology and emergency services.</p>
-    <p class="sub" style="margin-top:20px">wxdeck ships no weather data. Your own server or phone fetches it for your personal use from:</p>
+    <p class="sub" style="margin-top:20px">Radarhound ships no weather data. Your own server or phone fetches it for your personal use from:</p>
     <table>
       <tr><th>Source</th><th>Used for</th></tr>
       <tr><td><a href="https://www.bom.gov.au/copyright">Bureau of Meteorology</a></td><td>Radar, warnings, observations, radar archive. Personal use; don't serve it to others.</td></tr>
@@ -146,10 +146,10 @@ docker compose up -d --build</pre></li>
       <tr><td>NOAA, NASA GIBS and FIRMS, CIRA SLIDER</td><td>Satellite and fire hotspots.</td></tr>
       <tr><td>Aviation Weather Center, University of Wyoming, OpenStreetMap, GeoNames, Natural Earth</td><td>Airport reports, soundings, address search, towns, borders.</td></tr>
     </table>
-    <p class="caption">Full list and terms: <a href="https://github.com/ReverendOzmund/wxdeck/blob/main/NOTICE.md">NOTICE.md</a>. Screenshots show NOAA Himawari and NASA imagery.</p>
+    <p class="caption">Full list and terms: <a href="https://github.com/ReverendOzmund/radarhound/blob/main/NOTICE.md">NOTICE.md</a>. Screenshots show NOAA Himawari and NASA imagery.</p>
   </section>
 </main>
 
-<footer><div class="wrap">wxdeck is open source under the MIT licence · <a href="https://github.com/ReverendOzmund/wxdeck">github.com/ReverendOzmund/wxdeck</a></div></footer>
+<footer><div class="wrap">Radarhound is open source under the MIT licence · <a href="https://github.com/ReverendOzmund/radarhound">github.com/ReverendOzmund/radarhound</a></div></footer>
 </body>
 </html>

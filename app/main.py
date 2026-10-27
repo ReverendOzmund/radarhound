@@ -1,10 +1,11 @@
-"""wxdeck - self-hosted radar + weather workstation.
+"""Radarhound - self-hosted radar + weather workstation.
 
 Polls BoM radar loop pages, archives every frame to disk (so loops can run
 far longer than BoM's 7 frames), and proxies BoM observations and Open-Meteo
 forecasts with caching. All data sources are free and need no API keys.
 """
 import asyncio
+import ftplib
 import hashlib
 import hmac
 import json
@@ -29,7 +30,7 @@ from . import archive, bomftp, bomwarn, derived, extras, himawari, lightning, na
 from zoneinfo import ZoneInfo
 import numpy as np
 
-log = logging.getLogger("wxdeck")
+log = logging.getLogger("radarhound")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -48,7 +49,7 @@ POLL_SECONDS = int(os.getenv("POLL_SECONDS", "120"))
 RETENTION_HOURS = float(os.getenv("RETENTION_HOURS", "48"))
 STATIONS = env_list("STATIONS", "IDW60901.94608,IDW60901.94151,IDW60901.94602")
 OBS_MAP_PRODUCT = os.getenv("OBS_MAP_PRODUCT", "IDW60920")
-WXWARN = os.getenv("WXDECK_WARNINGS", "on").lower() not in ("0", "off", "false", "no")
+WXWARN = os.getenv("RADARHOUND_WARNINGS", os.getenv("WXDECK_WARNINGS", "on")).lower() not in ("0", "off", "false", "no")
 NATIONAL = os.getenv("NATIONAL", "on").lower() not in ("0", "off", "false", "no")
 NATIONAL_POLL = int(os.getenv("NATIONAL_POLL_SECONDS", "360"))
 ALL_OBS = ["IDW60920", "IDN60920", "IDV60920", "IDQ60920", "IDS60920", "IDT60920", "IDD60920"]
@@ -111,7 +112,7 @@ DATA = Path(os.getenv("DATA_DIR", "/data"))
 FRAMES = DATA / "frames"
 LAYERS = DATA / "layers"
 STATIC = Path(__file__).parent / "static"
-UA = {"User-Agent": "Mozilla/5.0 (compatible; wxdeck personal dashboard)"}
+UA = {"User-Agent": "Mozilla/5.0 (compatible; Radarhound personal dashboard)"}
 
 PRODUCT_LABELS = {
     "4": "64 km", "3": "128 km", "2": "256 km", "1": "512 km",
@@ -280,6 +281,15 @@ async def poll_product(client, rid: str, suffix: str, listing=None):
         log.warning("poll %s failed: %s", pid, e)
 
 
+_listing_ok = [True]
+_bg_tasks: set = set()
+
+
+def _keep_task(t):
+    """Hold a reference to a fire-and-forget task so it isn't garbage-collected mid-run."""
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
+    return t
 FTP_MAX_NEW = 36           # at most this many frames per product per cycle (3 hours of 5-minute frames)
 _ftp_down_until = 0.0
 
@@ -290,10 +300,13 @@ async def radar_listing():
     if RADAR_SOURCE == "web" or (RADAR_SOURCE == "auto" and time.time() < _ftp_down_until):
         return None
     try:
-        return await bomftp.alist()
+        names = await bomftp.alist()
+        _listing_ok[0] = True
+        return names
     except Exception as e:
         if RADAR_SOURCE == "ftp":
             log.warning("BoM FTP listing failed: %s", e)
+            _listing_ok[0] = False          # products keep their state this cycle instead of all going "unavailable"
             return []
         _ftp_down_until = time.time() + 600
         log.warning("BoM FTP unreachable (%s); using the radar web pages for 10 minutes", e)
@@ -320,7 +333,8 @@ async def bom_fwo(name: str) -> bytes:
 async def bom_warnings(feed: str):
     """One state's current BoM warnings: built from the FTP feed's warning products (the website's RSS
     isn't on FTP), or the website RSS when FTP isn't in use or hasn't loaded yet."""
-    if RADAR_SOURCE != "web" and (bomwarn.state["loaded"] or RADAR_SOURCE == "ftp"):
+    fresh = bool(bomwarn.state.get("last")) and time.time() - bomwarn.state["last"] < 900
+    if RADAR_SOURCE == "ftp" or (RADAR_SOURCE == "auto" and fresh):
         return bomwarn.items(feed)
     return await extras.warnings(app.state.http, BOM, feed)
 
@@ -336,13 +350,19 @@ async def poll_product_ftp(client, info: dict, rad: dict, listing: list):
     info["layer_id"] = f"IDR{info['radar']}{KM_DIGIT.get(info['km'], '3')}"
     names = bomftp.frames_for(pid, listing)
     if not names:
-        info.update(available=False, error="not on BoM's FTP feed")
+        if not _listing_ok[0]:
+            info["error"] = "BoM FTP listing failed this cycle"
+        else:
+            info.update(available=False, error="not on BoM's FTP feed")
         return
     cutoff = datetime.now(timezone.utc) - timedelta(hours=RETENTION_HOURS)
     todo = [n for n in names if not (FRAMES / pid / n).exists() and (frame_time(n) or cutoff) > cutoff][-FTP_MAX_NEW:]
     try:
         for n in todo:
-            b = await bomftp.aget(f"{bomftp.RADAR_DIR}/{n}")
+            try:
+                b = await bomftp.aget(f"{bomftp.RADAR_DIR}/{n}")
+            except ftplib.error_perm:          # rotated off BoM's server since the listing: skip it
+                continue
             if is_png(b):
                 write_atomic(FRAMES / pid / n, b)
         await ensure_layers(client, info["layer_id"])
@@ -352,13 +372,17 @@ async def poll_product_ftp(client, info: dict, rad: dict, listing: list):
         log.warning("FTP poll %s failed: %s", pid, e)
 
 
-def prune():
+def prune(fol=None, nat=None):
+    """Runs in a worker thread: `fol` (followed radars) and `nat` (national suffixes) are snapshots taken on
+    the event loop, so nothing here iterates dicts the loop is changing."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=RETENTION_HOURS)
     if not FRAMES.exists():
         return
+    fol = list(followed()) if fol is None else fol
+    nat = {rid: v.get("suffix", "1") for rid, v in list(national.state["radars"].items())} if nat is None else nat
     # radars' 512 km composites fetched only for the national mosaic are needed for an hour at most
-    mosaic_only = {f"IDR{rid}{v.get('suffix', '1')}" for rid, v in national.state["radars"].items()}
-    keep = {f"IDR{rid}{suf}" for rid in followed() for suf in (PRODUCTS if rid in RADARS else AUTO_PRODUCTS)}
+    mosaic_only = {f"IDR{rid}{suf}" for rid, suf in nat.items()}
+    keep = {f"IDR{rid}{suf}" for rid in fol for suf in (PRODUCTS if rid in RADARS else AUTO_PRODUCTS)}
     short = datetime.now(timezone.utc) - timedelta(hours=2)
     # radars followed only for storms or the seamless map keep 6 hours, not the full retention
     mine = {f"IDR{rid}{suf}" for rid in RADARS for suf in PRODUCTS}
@@ -426,7 +450,8 @@ async def poller():
                         await ensure_layers(client, f"IDR{rid}{digit}")
                     except Exception as e:
                         log.warning("basemap IDR%s%s failed: %s", rid, digit, e)
-            for name, job in (("prune", lambda: run_in_threadpool(prune)),
+            for name, job in (("prune", lambda: run_in_threadpool(prune, list(followed()),
+                                                                  {r: v.get("suffix", "1") for r, v in list(national.state["radars"].items())})),
                               ("warnings", run_warnings if WXWARN else None),
                               ("satellite prune", lambda: run_in_threadpool(satellite.prune, DATA, max(RETENTION_HOURS, 24))),
                               ("himawari prune", lambda: run_in_threadpool(himawari.prune, DATA, max(RETENTION_HOURS, 24)))):
@@ -441,7 +466,7 @@ async def poller():
 
 
 async def run_warnings():
-    """wxdeck's own radar-indicated warnings for each followed radar (and the national mosaic), plus
+    """Radarhound's own radar-indicated warnings for each followed radar (and the national mosaic), plus
     model-based watches every 6 hours."""
     tz = ZoneInfo(TZ_NAME)
     # every BoM radar's position, so storms can be matched to the nearest Doppler
@@ -550,7 +575,7 @@ async def lifespan(app):
         asyncio.create_task(voice_bg()),
         *( [asyncio.create_task(national.run(app.state.http, BOM, FRAMES, NATIONAL_POLL, radar_listing, SITES))] if NATIONAL else []),
         asyncio.create_task(poller()),
-        *( [asyncio.create_task(bomwarn.run(DATA, warning_feeds))] if RADAR_SOURCE != "web" else []),
+        *( [asyncio.create_task(bomwarn.run(DATA, warning_feeds, ftp_ok=lambda: time.time() >= _ftp_down_until))] if RADAR_SOURCE != "web" else []),
         asyncio.create_task(lightning.collector(app.state.strikes, lightning_centres)),
     ]
     yield
@@ -575,9 +600,9 @@ def lightning_centres():
     return pts
 
 
-app = FastAPI(title="wxdeck", lifespan=lifespan)
+app = FastAPI(title="Radarhound", lifespan=lifespan)
 
-NO_GZIP = ("/frames/", "/layers/", "/api/sat/", "/api/natbase", "/api/satcoast", "/static/downloads", "/app/wxdeck.apk", "/static/icon",
+NO_GZIP = ("/frames/", "/layers/", "/api/sat/", "/api/natbase", "/api/satcoast", "/static/downloads", "/app/radarhound.apk", "/static/icon",
            "/api/speech", "/api/loop/")       # already-compressed images, and audio that players fetch in byte ranges
 
 
@@ -610,17 +635,17 @@ class FastDelivery:
 app.add_middleware(FastDelivery)
 
 # ---------------------------------------------------------------- optional password (before going public)
-PASSWORD = os.getenv("WXDECK_PASSWORD", "")
-AUTH_OPEN = ("/login", "/static/icon-", "/static/manifest.json", "/static/style.css", "/app", "/static/downloads/", "/favicon")
+PASSWORD = os.getenv("RADARHOUND_PASSWORD", os.getenv("WXDECK_PASSWORD", ""))   # old name still works
+AUTH_OPEN = ("/login", "/static/icon-", "/static/logo.svg", "/static/manifest.json", "/static/style.css", "/app", "/static/downloads/", "/favicon")
 
 
 def _auth_token():
-    return hmac.new(PASSWORD.encode(), b"wxdeck-login-v1", hashlib.sha256).hexdigest()
+    return hmac.new(PASSWORD.encode(), b"radarhound-login-v1", hashlib.sha256).hexdigest()
 
 
 class PasswordGate:
-    """With WXDECK_PASSWORD set, everything needs the login cookie (browsers, the app's web view) or the
-    password in an X-Wxdeck-Key header (the app's background alert service)."""
+    """With RADARHOUND_PASSWORD set, everything needs the login cookie (browsers, the app's web view) or the
+    password in an X-Radarhound-Key header (the app's background alert service)."""
 
     def __init__(self, app):
         self.app = app
@@ -634,8 +659,8 @@ class PasswordGate:
             if "=" in part:
                 k, v = part.strip().split("=", 1)
                 cookies[k] = v
-        ok = hmac.compare_digest(cookies.get("wxdeck_auth", "").encode(), _auth_token().encode()) or \
-            hmac.compare_digest(headers.get("x-wxdeck-key", "").encode(), PASSWORD.encode())
+        ok = hmac.compare_digest(cookies.get("radarhound_auth", "").encode(), _auth_token().encode()) or \
+            hmac.compare_digest((headers.get("x-radarhound-key") or headers.get("x-wxdeck-key", "")).encode(), PASSWORD.encode())
         if ok:
             return await self.app(scope, receive, send)
         path = scope["path"]
@@ -649,13 +674,13 @@ class PasswordGate:
 app.add_middleware(PasswordGate)
 
 LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>wxdeck login</title><style>
+<title>Radarhound login</title><style>
 :root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1a20;color:#d6e2e4;font-family:"Segoe UI",Roboto,system-ui,sans-serif}
 form{background:#15232b;border:1px solid #263b44;border-radius:14px;padding:24px;width:min(340px,90vw)}
 h1{color:#f2a93b;margin:0 0 14px;font-size:26px}input,button{width:100%;box-sizing:border-box;font-size:17px;padding:12px;border-radius:10px}
 input{background:#1b2c35;color:#d6e2e4;border:1px solid #263b44}button{margin-top:12px;border:0;background:#f2a93b;color:#0f1a20;font-weight:600}
 p{color:#ef6f5c;min-height:20px;margin:10px 0 0;font-size:14px}</style></head><body>
-<form id="f"><h1>wxdeck</h1><input id="pw" type="password" placeholder="Password" autocomplete="current-password" autofocus>
+<form id="f"><img src="/static/logo.svg" alt="" width="72" height="72"><h1>Radarhound</h1><input id="pw" type="password" placeholder="Password" autocomplete="current-password" autofocus>
 <button>Log in</button><p id="m"></p></form><script>
 document.getElementById("f").onsubmit=async e=>{e.preventDefault();
 const r=await fetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:document.getElementById("pw").value})});
@@ -676,14 +701,14 @@ async def login(body: dict):
         await asyncio.sleep(1.5)                     # slows down guessing
         raise HTTPException(401, "wrong password")
     r = Response('{"ok":true}', media_type="application/json")
-    r.set_cookie("wxdeck_auth", _auth_token(), max_age=400 * 86400, httponly=True, samesite="lax")
+    r.set_cookie("radarhound_auth", _auth_token(), max_age=400 * 86400, httponly=True, samesite="lax")
     return r
 
 
 @app.get("/logout")
 async def logout():
     r = Response(status_code=302, headers={"Location": "/login"})
-    r.delete_cookie("wxdeck_auth")
+    r.delete_cookie("radarhound_auth")
     return r
 
 
@@ -760,19 +785,23 @@ async def get_loop(pid: str, names: str):
     frame, which matters on phones and over Tailscale."""
     if not (re.fullmatch(r"IDR\w{3,4}", pid) or pid == national.PID):
         raise HTTPException(400, "bad product")
-    out = bytearray()
-    files = []
-    for n in names.split(",")[:600]:
-        if not re.fullmatch(r"[A-Z]{3}\w*\.T\.\d{12}\.png", n):
-            continue
-        f = FRAMES / pid / n
-        if f.exists():
-            files.append((n, f.read_bytes()))
-    out += len(files).to_bytes(4, "little")
-    for n, b in files:
-        nb = n.encode()
-        out += len(nb).to_bytes(2, "little") + nb + len(b).to_bytes(4, "little") + b
-    return Response(bytes(out), media_type="application/octet-stream", headers={"Cache-Control": "max-age=60"})
+    def pack():                                 # disk reads off the event loop (up to 600 frames)
+        out = bytearray()
+        files = []
+        for n in names.split(",")[:600]:
+            if not re.fullmatch(r"[A-Z]{3}\w*\.T\.\d{12}\.png", n):
+                continue
+            f = FRAMES / pid / n
+            try:
+                files.append((n, f.read_bytes()))
+            except FileNotFoundError:           # pruned since the page listed it
+                continue
+        out += len(files).to_bytes(4, "little")
+        for n, b in files:
+            nb = n.encode()
+            out += len(nb).to_bytes(2, "little") + nb + len(b).to_bytes(4, "little") + b
+        return bytes(out)
+    return Response(await run_in_threadpool(pack), media_type="application/octet-stream", headers={"Cache-Control": "max-age=60"})
 
 
 OBS_SEEN: dict = {}          # station id -> {time: row}: history kept from the state observations file
@@ -813,7 +842,7 @@ async def get_obs():
                 rows = r.json()["observations"]["data"]
             except Exception as e:
                 # the per-station JSON is website-only: use the state observations file from the FTP feed
-                # and build the history from what wxdeck has seen itself
+                # and build the history from what Radarhound has seen itself
                 try:
                     result.append(await obs_from_state(st, prod, wmo))
                 except Exception as e2:
@@ -956,6 +985,8 @@ def radar_point(rid):
 
 @app.get("/api/natbase")
 async def get_natbase(half: int = 2600):
+    if half not in satellite.SIZES:
+        raise HTTPException(400, "bad size")
     try:
         path = await satellite.national_base(app.state.http, DATA, national.LAT0, national.LON0, half)
     except httpx.HTTPError as e:
@@ -1343,8 +1374,13 @@ async def set_radars(body: dict):
     ids = [str(r).strip() for r in body.get("radars", []) if str(r).strip().isdigit()]
     if not ids:
         raise HTTPException(400, "need at least one radar number")
-    RADARS[:] = list(dict.fromkeys(ids))[:8]
+    if len(set(ids)) > 8:
+        raise HTTPException(400, "up to 8 radars")
+    added = [r for r in dict.fromkeys(ids) if r not in RADARS]
+    RADARS[:] = list(dict.fromkeys(ids))
     save_settings()
+    for rid in added:                       # start the newly pinned radar's loops now, not next cycle
+        _keep_task(asyncio.create_task(poll_now(rid)))
     return {"radars": RADARS}
 
 
@@ -1380,6 +1416,7 @@ async def get_fcgrid(radar: str, model: str = "best", kind: str = "sfc", fmt: st
 
 @app.get("/api/obsmap")
 async def get_obsmap(scope: str = "state"):
+    scope = "national" if scope == "national" else "state"
     prods = ALL_OBS if scope == "national" else [OBS_MAP_PRODUCT]
 
     async def load():
@@ -1465,6 +1502,8 @@ async def add_report(body: dict):
         rep_ = {"lat": round(float(body["lat"]), 4), "lon": round(float(body["lon"]), 4),
                 "kind": str(body.get("kind", "other"))[:20], "size": float(body["size"]) if body.get("size") not in (None, "") else None,
                 "note": str(body.get("note") or "")[:200], "t": str(body.get("t") or datetime.now(timezone.utc).isoformat())}
+        rt = datetime.fromisoformat(rep_["t"].replace("Z", "+00:00"))
+        rep_["t"] = (rt if rt.tzinfo else rt.replace(tzinfo=timezone.utc)).isoformat()
     except (KeyError, TypeError, ValueError):
         raise HTTPException(400, "need lat, lon, kind")
     if not valid_point(rep_) or (rep_["size"] is not None and not (math.isfinite(rep_["size"]) and 0 <= rep_["size"] <= 300)):
@@ -1577,10 +1616,10 @@ def _bom_area_text(body: str, kind: str) -> str:
 
 @app.get("/api/alerts")
 async def get_alerts(lat: float | None = None, lon: float | None = None, near: float = 50, far: float = 300, scope: str = "near"):
-    """One alert feed for the web page and the phone app: wxdeck's own warnings and watches, BoM's severe
+    """One alert feed for the web page and the phone app: Radarhound's own warnings and watches, BoM's severe
     ones, and damaging gusts measured near home, each with a short sentence to read aloud.
     Every alert says whether it is "near" (covers, or is within `near` km of, the point: home by default).
-    scope "near" = only those; "all" = also wxdeck warnings, watches and gusts within `far` km (BoM
+    scope "near" = only those; "all" = also Radarhound warnings, watches and gusts within `far` km (BoM
     warnings, which cover whole districts, only when they name a place near home). Near alerts come first."""
     if lat is not None and lon is not None and not (math.isfinite(lat) and math.isfinite(lon)):
         raise HTTPException(400, "bad position")
@@ -1604,7 +1643,7 @@ async def get_alerts(lat: float | None = None, lon: float | None = None, near: f
         areas = w.get("towns") or []
         where = _say_list(areas) or "the area " + w["text"].split(" was located ")[-1].split(",")[0]
         # the event id stays the same when the national mosaic hands a storm to a radar (or back)
-        out.append({"id": w.get("event") or w["id"], "source": "wxdeck", "type": w["type"], "severity": 3 if w["type"] == "TOR" else 2,
+        out.append({"id": w.get("event") or w["id"], "source": "radarhound", "type": w["type"], "severity": 3 if w["type"] == "TOR" else 2,
                     "title": names.get(w["type"], w["title"]), "areas": areas, "inside": inside, "near": is_near, "distance_km": round(dist),
                     "issued": w["issued"], "expires": w["expires"], "text": w["text"], "hazards": w.get("hazards", []),
                     "lat": w["lat"], "lon": w["lon"],
@@ -1624,7 +1663,7 @@ async def get_alerts(lat: float | None = None, lon: float | None = None, near: f
                     "issued": b.get("pub"), "expires": None, "text": title, "hazards": [], "link": b["link"],
                     "speech": f"Bureau of Meteorology. {_speakable(title).rstrip('.')}."
                               + (f" This includes {_say_list([h.title() for h in hits[:3]])}." if hits else "")})
-    # wxdeck's model watches (damaging wind, severe thunderstorm, tornado, extreme heat, fire weather)
+    # Radarhound's model watches (damaging wind, severe thunderstorm, tornado, extreme heat, fire weather)
     for w in wxw.state.get("watches", []):
         if datetime.fromisoformat(w["valid_to"]) <= now:
             continue
@@ -1634,7 +1673,7 @@ async def get_alerts(lat: float | None = None, lon: float | None = None, near: f
         if not is_near and (scope != "all" or dist > far):
             continue
         until = datetime.fromisoformat(w["valid_to"]).astimezone(tz)
-        out.append({"id": w["id"], "source": "wxdeck", "type": w["type"], "severity": 1,
+        out.append({"id": w["id"], "source": "radarhound", "type": w["type"], "severity": 1,
                     "title": w["title"], "areas": [], "inside": inside, "near": is_near, "distance_km": round(dist),
                     "issued": w.get("valid_from"), "expires": w["valid_to"], "text": w["text"], "hazards": [],
                     "speech": f"{w['title']} {'for your area' if inside else 'near your area'}, until {until.strftime('%-I %p').lower()}. "
@@ -1658,7 +1697,7 @@ async def get_alerts(lat: float | None = None, lon: float | None = None, near: f
             continue
         if now - obs_t > timedelta(minutes=40):
             continue
-        out.append({"id": f"gust-{st['name']}-{obs_t:%Y%m%d%H}", "source": "wxdeck", "type": "WIND", "severity": 2,
+        out.append({"id": f"gust-{st['name']}-{obs_t:%Y%m%d%H}", "source": "radarhound", "type": "WIND", "severity": 2,
                     "title": "Damaging wind gust observed", "areas": [st["name"]], "inside": None, "near": is_near,
                     "distance_km": round(d), "issued": st["time"], "expires": None,
                     "text": f"A gust of {g:.0f} km/h was measured at {st['name']}.", "hazards": [],
@@ -1675,7 +1714,7 @@ LTG_ALERT_KM = float(os.getenv("LIGHTNING_ALERT_KM", "15"))
 def nowcast_for(lat, lon):
     """Rain nowcast at a point from the nearest live radar covering it (or the national mosaic)."""
     best = None
-    for rid in followed():
+    for rid in list(RADARS) + [r for r in list(AUTO_RADARS) if r not in RADARS]:   # no pruning from a thread
         r = radars.get(rid) or {}
         p3 = products.get(f"IDR{rid}3") or {}
         if r.get("lat") is None or not p3.get("available"):
@@ -1706,7 +1745,7 @@ async def _extra_alerts(plat, plon, now, tz):
     if near_rows:
         first = min(r[0] for r in near_rows)
         closest = min(lightning.dist_km(plat, plon, r[1], r[2]) for r in near_rows)
-        out.append({"id": f"ltg-{first // 1_800_000}", "source": "wxdeck", "type": "LTG", "severity": 1,
+        out.append({"id": f"ltg-{first // 1_800_000}", "source": "radarhound", "type": "LTG", "severity": 1,
                     "title": "Lightning nearby", "areas": [], "inside": None, "near": True, "distance_km": round(closest),
                     "issued": datetime.fromtimestamp(first / 1000, timezone.utc).isoformat(), "expires": None,
                     "text": f"{len(near_rows)} lightning strike{'s' if len(near_rows) != 1 else ''} within {LTG_ALERT_KM:.0f} km in the last 10 minutes, the closest {closest:.0f} km away.",
@@ -1737,7 +1776,7 @@ async def _extra_alerts(plat, plon, now, tz):
             eta = now + timedelta(hours=tca)
             dist = math.hypot(x, y)
             heavy = st["dbz"] >= 55
-            out.append({"id": f"arr-{st['id']}", "source": "wxdeck", "type": "ARR", "severity": 1, "near": True,
+            out.append({"id": f"arr-{st['id']}", "source": "radarhound", "type": "ARR", "severity": 1, "near": True,
                         "title": "Storm approaching", "areas": [], "inside": None, "distance_km": round(dist),
                         "issued": now.isoformat(), "expires": (eta + timedelta(minutes=20)).isoformat(),
                         "lat": st["lat"], "lon": st["lon"],
@@ -1752,7 +1791,7 @@ async def _extra_alerts(plat, plon, now, tz):
         w = nowcast.words(nc, tz)
         if w["starts_min"] is not None and 0 < w["starts_min"] <= 30:
             start = now + timedelta(minutes=w["starts_min"])
-            out.append({"id": f"rain-{int(start.timestamp()) // 3600}", "source": "wxdeck", "type": "RAIN", "severity": 0,
+            out.append({"id": f"rain-{int(start.timestamp()) // 3600}", "source": "radarhound", "type": "RAIN", "severity": 0,
                         "near": True, "title": "Rain soon", "areas": [], "inside": None, "distance_km": None,
                         "issued": now.isoformat(), "expires": None, "text": w["text"], "hazards": [], "rain": True,
                         "speech": w["text"].replace(" min)", " minutes)")})
@@ -1902,7 +1941,7 @@ async def geocode(q: str):
         try:
             r = await app.state.http.get("https://nominatim.openstreetmap.org/search", params={
                 "q": q, "countrycodes": GEO_COUNTRY, "format": "jsonv2", "limit": 6, "addressdetails": 1},
-                headers={"User-Agent": "wxdeck/1.0 (self-hosted weather dashboard)"}, timeout=15)
+                headers={"User-Agent": "radarhound/1.0 (self-hosted weather dashboard)"}, timeout=15)
             if r.status_code == 200:
                 for x in r.json():
                     a = x.get("address", {})
@@ -1951,7 +1990,7 @@ async def follow_radar(body: dict):
     """Start following a BoM radar (128 km reflectivity + Doppler) for a few hours. BoM's loop page already
     holds the last hour or so, so the loop is ready as soon as the first poll finishes."""
     ids = [str(x) for x in (body.get("radars") or [body.get("radar", "")])]
-    known = set(radars) | national.known_ids(DATA)            # every BoM radar, once the national list has loaded
+    known = set(SITES) | set(radars) | national.known_ids(DATA)     # every BoM radar
     ids = [x for x in ids if x.isdigit() and (len(known) < 20 or x in known)][:16]
     if not ids:
         raise HTTPException(400, "bad radar")
@@ -1970,16 +2009,17 @@ async def follow_radar(body: dict):
         async def bg():
             # loops first, several radars at once; basemaps follow in the normal poll cycle
             sem = asyncio.Semaphore(4)
+            listing = await radar_listing()           # FTP when available (the website blocks busy addresses)
             async with httpx.AsyncClient(headers=UA, timeout=20, follow_redirects=True) as client:
                 async def one(rid):
                     async with sem:
                         try:
                             for suf in AUTO_PRODUCTS:
-                                await poll_product(client, rid, suf)
+                                await poll_product(client, rid, suf, listing)
                         except Exception as e:
                             log.warning("follow %s failed: %s", rid, e)
                 await asyncio.gather(*(one(r) for r in new))
-        asyncio.create_task(bg())
+        _keep_task(asyncio.create_task(bg()))
     return {"radars": followed(), "new": new}
 
 
@@ -2022,6 +2062,72 @@ async def status():
             "national": {k: v for k, v in national.state.items() if k != "radars"} | {"radars": len(national.state["radars"])}}
 
 
+def _newest_frame_age(pid: str):
+    d = FRAMES / pid
+    newest = None
+    if d.exists():
+        for f in d.glob("*.png"):
+            t = frame_time(f.name)
+            if t and (newest is None or t > newest):
+                newest = t
+    return None if newest is None else (datetime.now(timezone.utc) - newest).total_seconds() / 60
+
+
+def _health_level(age_min, ok_min, warn_min):
+    if age_min is None:
+        return "down"
+    return "ok" if age_min <= ok_min else "warn" if age_min <= warn_min else "down"
+
+
+@app.get("/api/health")
+async def health():
+    """A short traffic-light summary of every feed, for the indicator in the page header."""
+    def ago(m):
+        if m is None:
+            return "no data"
+        return "just now" if m < 1.5 else f"{m:.0f} min ago" if m < 90 else f"{m / 60:.1f} h ago"
+    checks = []
+    src = "FTP" if RADAR_SOURCE != "web" and time.time() >= _ftp_down_until else "website"
+    for rid in RADARS:
+        p3 = products.get(f"IDR{rid}3") or {}
+        age = await run_in_threadpool(_newest_frame_age, f"IDR{rid}3")
+        name = (SITES.get(rid) or radars.get(rid) or {}).get("name", f"Radar {rid}")
+        lvl = _health_level(age, 15, 45)
+        detail = f"newest frame {ago(age)}, via BoM {src}"
+        if p3.get("error") and lvl != "ok":
+            detail += f" ({p3['error']})"
+        checks.append({"id": f"radar-{rid}", "name": f"Radar: {name}", "level": lvl, "detail": detail})
+    if NATIONAL:
+        age = await run_in_threadpool(_newest_frame_age, national.PID)
+        lvl = _health_level(age, 15, 45)
+        used = national.state.get("radars_used")
+        checks.append({"id": "national", "name": "National mosaic", "level": lvl,
+                       "detail": f"built {ago(age)}" + (f" from {used} radars" if used else "")
+                       + (f" ({national.state['error']})" if national.state.get("error") and lvl != "ok" else "")})
+    if RADAR_SOURCE != "web":
+        ws = bomwarn.state
+        age = (time.time() - ws["last"]) / 60 if ws.get("last") else None
+        lvl = "ok" if age is not None and age < 15 else "warn" if ws.get("loaded") else "down"
+        checks.append({"id": "warnings", "name": "BoM warnings", "level": lvl,
+                       "detail": (f"checked {ago(age)} via FTP" if age is not None else "not loaded yet")
+                       + (f" ({ws['error']})" if ws.get("error") else "")})
+    if bomftp.state.get("ok") is False:
+        checks.append({"id": "ftp", "name": "BoM FTP feed", "level": "warn" if RADAR_SOURCE == "auto" else "down",
+                       "detail": f"unreachable ({bomftp.state.get('error')})" + ("; using the website meanwhile" if RADAR_SOURCE == "auto" else "")})
+    ls = lightning.status
+    if ls.get("error") == "disabled":
+        pass
+    else:
+        last = (time.time() - ls["last_strike"] / 1000) / 60 if ls.get("last_strike") else None
+        lvl = "ok" if ls.get("connected") else "warn" if last is not None and last < 30 else "down"
+        checks.append({"id": "lightning", "name": "Lightning", "level": lvl,
+                       "detail": ("connected" if ls.get("connected") else f"reconnecting ({ls.get('error') or 'no connection'})")
+                       + (f", last strike in range {ago(last)}" if last is not None else "")})
+    order = {"ok": 0, "warn": 1, "down": 2}
+    overall = max((c["level"] for c in checks), key=order.get, default="ok")
+    return {"level": overall, "checks": checks, "source": src}
+
+
 # ---------------------------------------------------------------- static
 FRAMES.mkdir(parents=True, exist_ok=True)
 LAYERS.mkdir(parents=True, exist_ok=True)
@@ -2033,27 +2139,28 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 @app.get("/app")
 async def app_page():
     """Phone-friendly download page for the Android app."""
-    apk = STATIC / "downloads" / "wxdeck.apk"
+    apk = STATIC / "downloads" / "radarhound.apk"
     size = f"{apk.stat().st_size / 1e6:.1f} MB" if apk.exists() else "not built"
     return Response(f"""<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Get wxdeck</title><style>body{{background:#0f1a20;color:#d6e2e4;font-family:system-ui,sans-serif;padding:28px 22px;line-height:1.5}}
+<title>Get Radarhound</title><style>body{{background:#0f1a20;color:#d6e2e4;font-family:system-ui,sans-serif;padding:28px 22px;line-height:1.5}}
 a.b{{display:block;text-align:center;background:#f2a93b;color:#0f1a20;font-weight:700;padding:14px;border-radius:10px;text-decoration:none;margin:18px 0}}
 h1{{color:#f2a93b;margin:0}} code{{background:#1b2c35;padding:1px 5px;border-radius:5px}} small{{color:#8aa0a6}}</style></head><body>
-<h1>wxdeck</h1><p>Install the Android app, then connect it to this server.</p>
-<a class="b" href="/app/wxdeck.apk">Download for Android ({size})</a>
+<img src="/static/logo.svg" alt="" width="64" height="64"><h1>Radarhound</h1><p>Install the Android app, then connect it to this server.</p>
+<a class="b" href="/app/radarhound.apk">Download for Android ({size})</a>
 <p><small>Android will ask you to allow installs from your browser the first time. When the app opens, enter this server's address:</small><br>
 <code id="u"></code></p>
-<p><b>iPhone / iPad:</b> open this server in Safari, tap Share, then <b>Add to Home Screen</b>. wxdeck opens full screen like an app.</p>
+<p><b>iPhone / iPad:</b> open this server in Safari, tap Share, then <b>Add to Home Screen</b>. Radarhound opens full screen like an app.</p>
 <p><b>PC:</b> in Chrome or Edge, use the install icon in the address bar (works on <code>localhost</code> or an https address).</p>
 <script>document.getElementById("u").textContent = location.origin;</script></body></html>""", media_type="text/html")
 
 
-@app.get("/app/wxdeck.apk")
+@app.get("/app/radarhound.apk")
+@app.get("/app/wxdeck.apk")            # the old name, for links saved before the rename
 async def app_apk():
-    apk = STATIC / "downloads" / "wxdeck.apk"
+    apk = STATIC / "downloads" / "radarhound.apk"
     if not apk.exists():
         raise HTTPException(404, "the Android app hasn't been built into this server")
-    return FileResponse(apk, media_type="application/vnd.android.package-archive", filename="wxdeck.apk")
+    return FileResponse(apk, media_type="application/vnd.android.package-archive", filename="radarhound.apk")
 
 
 @app.get("/sw.js")

@@ -1,4 +1,4 @@
-/* wxdeck phone mode: small adjustments to the page when it runs on the phone without a server. */
+/* Radarhound phone mode: small adjustments to the page when it runs on the phone without a server. */
 "use strict";
 (() => {
   if (typeof WXP === "undefined") return;

@@ -1,4 +1,4 @@
-package au.wxdeck.app;
+package au.radarhound.app;
 
 import android.app.AlarmManager;
 import android.app.Notification;
@@ -49,7 +49,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Keeps watching the wxdeck server for new warnings while the app is closed. Every minute it asks the
+ * Keeps watching the Radarhound server for new warnings while the app is closed. Every minute it asks the
  * server's /api/alerts feed; a new warning nearby gets a heads-up notification, an attention tone and a
  * spoken announcement ("Tornado warning issued for Perth, Cannington and Bentley ..."); warnings further
  * away get a quiet notification. Tornado warnings play on the alarm stream so they are heard on silent.
@@ -60,10 +60,10 @@ import org.json.JSONObject;
  * deep sleep; on quiet days it lets the phone sleep and checks as often as Android allows.
  */
 public class AlertService extends Service implements TextToSpeech.OnInitListener {
-    static final String PREFS = "wxdeck_alerts";
+    static final String PREFS = "radarhound_alerts";
     static final String CH_WATCH = "watch", CH_WARN = "warnings3", CH_TOR = "tornado2", CH_FAR = "further", CH_BRIEF = "brief";
-    static final String ACTION_POLL = "au.wxdeck.app.POLL";
-    static final String GROUP_FAR = "wxdeck_far";
+    static final String ACTION_POLL = "au.radarhound.app.POLL";
+    static final String GROUP_FAR = "radarhound_far";
     static final int ID_WATCH = 1;
     static final long SEEN_KEEP_MS = 12 * 3600_000L;
 
@@ -117,11 +117,11 @@ public class AlertService extends Service implements TextToSpeech.OnInitListener
         else startForeground(ID_WATCH, watching);
         tts = new TextToSpeech(this, this);
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "wxdeck:check");
+        wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "radarhound:check");
         wake.setReferenceCounted(false);
-        stormWake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "wxdeck:storm");
+        stormWake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "radarhound:storm");
         stormWake.setReferenceCounted(false);
-        thread = new HandlerThread("wxdeck-alerts");
+        thread = new HandlerThread("radarhound-alerts");
         thread.start();
         handler = new Handler(thread.getLooper());
         handler.post(poll);
@@ -234,7 +234,7 @@ public class AlertService extends Service implements TextToSpeech.OnInitListener
     private HttpURLConnection open(String url) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         String key = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key", "");
-        if (key != null && !key.isEmpty()) c.setRequestProperty("X-Wxdeck-Key", key);
+        if (key != null && !key.isEmpty()) c.setRequestProperty("X-Radarhound-Key", key);
         return c;
     }
 
@@ -267,7 +267,7 @@ public class AlertService extends Service implements TextToSpeech.OnInitListener
             if (text.isEmpty()) return;
             p.edit().putString("briefDone", today).apply();
             NotificationCompat.Builder b = new NotificationCompat.Builder(this, CH_BRIEF)
-                .setSmallIcon(R.drawable.ic_stat_wxdeck).setContentTitle("Today's weather")
+                .setSmallIcon(R.drawable.ic_stat_radarhound).setContentTitle("Today's weather")
                 .setContentText(text).setStyle(new NotificationCompat.BigTextStyle().bigText(text))
                 .setAutoCancel(true).setTimeoutAfter(6 * 3600_000L).setContentIntent(openApp());
             ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify("wxbrief", 2, b.build());
@@ -283,7 +283,7 @@ public class AlertService extends Service implements TextToSpeech.OnInitListener
         failures++;
         if (failures >= 3) {
             String since = lastOk > 0 ? " since " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(lastOk)) : "";
-            setWatching("Can't reach your wxdeck server" + since + ". Still trying every minute.");
+            setWatching("Can't reach your Radarhound server" + since + ". Still trying every minute.");
         }
     }
 
@@ -306,7 +306,7 @@ public class AlertService extends Service implements TextToSpeech.OnInitListener
             c.setConnectTimeout(15000); c.setReadTimeout(20000);
             StringBuilder sb = new StringBuilder();
             try {
-                if (c.getResponseCode() == 401) { setWatching("Your wxdeck server needs its password: open the app, tap ⇄ and enter it."); throw new Exception("login needed"); }
+                if (c.getResponseCode() == 401) { setWatching("Your Radarhound server needs its password: open the app, tap ⇄ and enter it."); throw new Exception("login needed"); }
                 if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
                 try (BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"))) {
                     String line; while ((line = r.readLine()) != null) sb.append(line);
@@ -396,7 +396,7 @@ public class AlertService extends Service implements TextToSpeech.OnInitListener
     private void notifyFar(JSONObject a) {
         String body = a.optString("speech") + (a.has("distance_km") && !a.isNull("distance_km") ? " (" + a.optInt("distance_km") + " km away)" : "");
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, CH_FAR)
-            .setSmallIcon(R.drawable.ic_stat_wxdeck)
+            .setSmallIcon(R.drawable.ic_stat_radarhound)
             .setContentTitle(a.optString("title"))
             .setContentText(body)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
@@ -413,7 +413,7 @@ public class AlertService extends Service implements TextToSpeech.OnInitListener
         String title = a.optString("title");
         String body = isBom ? title : a.optString("speech");
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, tor ? CH_TOR : CH_WARN)
-            .setSmallIcon(R.drawable.ic_stat_wxdeck)
+            .setSmallIcon(R.drawable.ic_stat_radarhound)
             .setContentTitle(title + (isBom ? " (BoM)" : ""))
             .setContentText(body)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body + "\n\n" + a.optString("text")))
@@ -435,7 +435,7 @@ public class AlertService extends Service implements TextToSpeech.OnInitListener
         if (!p.getBoolean("voice", true)) return;
         wake.acquire(5 * 60_000L);                   // stay awake until the announcement has been read out
         for (int i = 0; i < list.size(); i++)
-            speechQueue.add(new String[]{(i == 0 ? "wxdeck alert. " : "") + list.get(i).optString("speech"), alarm ? "1" : "0"});
+            speechQueue.add(new String[]{(i == 0 ? "Radarhound alert. " : "") + list.get(i).optString("speech"), alarm ? "1" : "0"});
         if (!speaking) {
             speaking = true;
             handler.postDelayed(this::playNextSpeech, toneMs + (alarm ? 500 : 4000));
@@ -529,8 +529,8 @@ public class AlertService extends Service implements TextToSpeech.OnInitListener
 
     private Notification watchingNotification(String text) {
         return new NotificationCompat.Builder(this, CH_WATCH)
-            .setSmallIcon(R.drawable.ic_stat_wxdeck)
-            .setContentTitle("wxdeck is watching for warnings")
+            .setSmallIcon(R.drawable.ic_stat_radarhound)
+            .setContentTitle("Radarhound is watching for warnings")
             .setContentText(text)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
             .setOngoing(true).setPriority(NotificationCompat.PRIORITY_MIN)

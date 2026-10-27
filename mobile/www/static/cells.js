@@ -1,4 +1,4 @@
-/* wxdeck: storm cell tracking on live BoM reflectivity frames.
+/* Radarhound: storm cell tracking on live BoM reflectivity frames.
    Cells = connected areas above a threshold; tracked frame to frame by nearest predicted
    position; motion is smoothed over the track; paths are projected 60 minutes ahead and
    checked against home for arrival times. Uses globals from app.js. */
