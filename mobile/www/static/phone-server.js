@@ -286,6 +286,22 @@ const WXP = (() => {
       ws925: "wind_speed_925hPa", wd925: "wind_direction_925hPa", ws850: "wind_speed_850hPa", wd850: "wind_direction_850hPa", ws700: "wind_speed_700hPa", wd700: "wind_direction_700hPa",
       ws500: "wind_speed_500hPa", wd500: "wind_direction_500hPa" }, models: true, derive: true },
   };
+  KINDS.dd = { api: OM, vars: { temp: "temperature_2m", rh: "relative_humidity_2m", blh: "boundary_layer_height", sw: "shortwave_radiation",
+    ts: "soil_temperature_0cm", sm: "soil_moisture_0_to_1cm", rain: "precipitation" }, wind: ["wind_speed_10m", "wind_direction_10m"], models: true, derive: "dd" };
+  // dust devil potential (0-10): the same sums as the server's dustdevil.py
+  const ramp = (x, lo, hi) => (x <= lo ? 0 : x >= hi ? 1 : (x - lo) / (hi - lo));
+  function ddIndex(t2, rh, windKmh, blh, sw, ts, sm, rain) {
+    if (t2 == null || windKmh == null || sw == null || t2 < -90) return null;
+    rh = rh == null ? 40 : rh; sw = Math.max(0, sw);
+    const dry = sm == null ? 1 : Math.max(0.25, Math.min(1, 1 - (sm - 0.08) / 0.22)), heat = 0.45 * sw * dry;
+    const estimated = blh == null || blh <= 0, zi = estimated ? (sw > 150 ? Math.max(300, Math.min(4000, 125 * (100 - rh) / 5)) : 200) : blh;
+    const wstar = heat > 0 ? Math.cbrt(Math.max(0, 9.81 / (t2 + 273.15) * (heat / 1200) * zi)) : 0;
+    const w = windKmh / 3.6, fWind = w < 7 ? 0.55 + 0.45 * ramp(w, 0.5, 2) : 1 - ramp(w, 7, 13);
+    const dts = ts == null ? null : ts - t2, fSa = dts == null ? 0.85 : 0.7 + 0.3 * ramp(dts, 3, 15);
+    const ddp = 10 * ramp(wstar, 1.6, 4.0) * fWind * (1 - 0.65 * ramp(rh, 30, 65)) * fSa * (rain != null && rain >= 0.2 ? 0 : 1);
+    return { ddp: +ddp.toFixed(1), wstar: +wstar.toFixed(2), blh: estimated ? null : Math.round(zi), dts: dts == null ? null : +dts.toFixed(1) };
+  }
+  const ddLabel = v => (v == null ? "unknown" : v >= 7 ? "very likely" : v >= 4 ? "likely" : v >= 2 ? "possible" : "unlikely");
   for (const p of [925, 850, 700, 500, 300, 250]) KINDS[`p${p}`] = { api: OM, vars: { temp: `temperature_${p}hPa`, rh: `relative_humidity_${p}hPa`, gph: `geopotential_height_${p}hPa` }, wind: [`wind_speed_${p}hPa`, `wind_direction_${p}hPa`], models: true };
   const FC_MODELS = { best: null, ecmwf: "ecmwf_ifs025", gfs: "gfs_seamless", icon: "icon_seamless", access: "bom_access_global" };
   function gridPoints(lat0, lon0, half, n) {
@@ -337,7 +353,19 @@ const WXP = (() => {
       rows.push(...(Array.isArray(d) ? d : [d]));
     }
     const times = rows[0].hourly.time.slice(0, 48), nt = times.length, vars = {};
-    if (spec.derive) {
+    if (spec.derive === "dd") {
+      const keys = ["ddp", "wstar", "blh", "dts", "u", "v"];
+      for (const k of keys) vars[k] = Array.from({ length: nt }, () => new Array(rows.length).fill(null));
+      rows.forEach((row, p) => {
+        const H = row.hourly || {}, get = (k, t) => { const a = H[spec.vars[k]]; return a && t < a.length ? a[t] : null; };
+        for (let t = 0; t < nt; t++) {
+          const ws = (H[spec.wind[0]] || [])[t], wd = (H[spec.wind[1]] || [])[t];
+          const r = ddIndex(get("temp", t), get("rh", t), ws, get("blh", t), get("sw", t), get("ts", t), get("sm", t), get("rain", t));
+          if (r) for (const k of ["ddp", "wstar", "blh", "dts"]) vars[k][t][p] = r[k];
+          if (ws != null && wd != null) { vars.u[t][p] = +(-ws * Math.sin(wd * Math.PI / 180)).toFixed(1); vars.v[t][p] = +(-ws * Math.cos(wd * Math.PI / 180)).toFixed(1); }
+        }
+      });
+    } else if (spec.derive) {
       const keys = ["stp", "scp", "shear6", "srh1", "srh3", "lcl", "cin", "cape", "u", "v", "mu", "mv"];
       for (const k of keys) vars[k] = Array.from({ length: nt }, () => new Array(rows.length).fill(null));
       rows.forEach((row, p) => {
@@ -551,6 +579,113 @@ const WXP = (() => {
     }, 30e3);
   }
 
+  // ---------------------------------------------------------------- point environment and sightings
+  const ENV_HOURLY = ["temperature_2m", "dew_point_2m", "relative_humidity_2m", "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "precipitation", "cloud_cover",
+    "cape", "convective_inhibition", "lifted_index", "boundary_layer_height", "shortwave_radiation", "soil_temperature_0cm", "soil_moisture_0_to_1cm",
+    "wind_speed_925hPa", "wind_direction_925hPa", "wind_speed_850hPa", "wind_direction_850hPa", "wind_speed_700hPa", "wind_direction_700hPa", "wind_speed_500hPa", "wind_direction_500hPa",
+    "temperature_850hPa", "temperature_700hPa", "temperature_500hPa", "geopotential_height_850hPa", "geopotential_height_700hPa", "geopotential_height_500hPa"];
+  function pointEnv(lat, lon, pastDays = 0) {
+    lat = +(+lat).toFixed(2); lon = +(+lon).toFixed(2);
+    const load = async () => {
+      const params = { latitude: lat, longitude: lon, hourly: ENV_HOURLY.join(","), wind_speed_unit: "kmh", timeformat: "unixtime", timezone: tzName(), forecast_days: 3 };
+      if (pastDays) params.past_days = Math.max(1, Math.min(92, pastDays));
+      const H = (await http(OM, "json", { params })).hourly || {}, out = [];
+      (H.time || []).forEach((t, i) => {
+        const g = name => { const a = H[name]; return a && i < a.length ? a[i] : null; };
+        const row = { t, temp: g("temperature_2m"), dew: g("dew_point_2m"), rh: g("relative_humidity_2m"), wind: g("wind_speed_10m"), wdir: g("wind_direction_10m"),
+          gust: g("wind_gusts_10m"), rain: g("precipitation"), cloud: g("cloud_cover"), li: g("lifted_index"), sw: g("shortwave_radiation") };
+        const dd = ddIndex(row.temp, row.rh, row.wind, g("boundary_layer_height"), row.sw, g("soil_temperature_0cm"), g("soil_moisture_0_to_1cm"), row.rain);
+        if (dd) Object.assign(row, dd);
+        const sv = svrPoint(k => g(KINDS.svr.vars[k]), lat < 0);
+        if (sv) for (const k of ["stp", "scp", "shear6", "srh1", "srh3", "lcl", "cin", "cape"]) row[k] = sv[k]; else row.cape = g("cape");
+        for (const [lo, name] of [[700, "lr75"], [850, "lr85"]]) {
+          const ta = g(`temperature_${lo}hPa`), tb = g("temperature_500hPa"), za = g(`geopotential_height_${lo}hPa`), zb = g("geopotential_height_500hPa");
+          if (![ta, tb, za, zb].includes(null) && zb - za > 500) row[name] = +((ta - tb) / ((zb - za) / 1000)).toFixed(1);
+        }
+        out.push(row);
+      });
+      return out;
+    };
+    return pastDays ? load() : cached(`env|${lat},${lon}`, 1800e3, load);      // a look back is a one-off for one sighting: not kept
+  }
+  const envAt = (series, ts) => { let best = null; for (const r of series) if (!best || Math.abs(r.t - ts) < Math.abs(best.t - ts)) best = r; return best && Math.abs(best.t - ts) <= 5400 ? { ...best } : null; };
+  async function envApi(q) {
+    const h = home(), both = q.get("lat") != null && q.get("lon") != null;
+    const lat = both ? +q.get("lat") : h.lat, lon = both ? +q.get("lon") : h.lon;
+    if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw httpError(400, "lat/lon out of range");
+    const series = await pointEnv(lat, lon), now = Date.now() / 1000;
+    const hours = series.filter(r => r.t >= now - 3600 && r.t <= now + 48 * 3600), cur = envAt(series, now);
+    const peak = hours.filter(r => r.t <= now + 18 * 3600 && r.ddp != null).reduce((a, b) => (!a || b.ddp > a.ddp ? b : a), null);
+    return { point: [lat, lon], now: cur, peak, hours, label: ddLabel(cur ? cur.ddp : null), peak_label: ddLabel(peak ? peak.ddp : null) };
+  }
+  // photos and radar frames for sightings live in the browser's cache storage (localStorage is too small)
+  const sightFile = async (id, what, put) => {
+    try {
+      const c = await caches.open("wxp-sightings"), key = `/sighting/${id}/${what}`;
+      if (put === null) return c.delete(key);
+      if (put) return c.put(key, new Response(put.buf, { headers: { "content-type": put.type } }));
+      return c.match(key);
+    } catch { return null; }
+  };
+  const kmBetween = (la1, lo1, la2, lo2) => Math.hypot((la1 - la2) * KM, (lo1 - lo2) * KM * Math.cos((la1 + la2) / 2 * Math.PI / 180));      // as the server's _km
+  // returns false when a fetch failed (offline or the source is busy), true otherwise
+  async function snapshotSighting(item, pidHint, envOnly = false) {
+    const S_ = listStore("reports"), ts = +new Date(item.t), patch = {};
+    let ok = true;
+    if (!envOnly) try {      // the radar frame nearest the sighting time, from the product on screen or a radar that covers the spot
+      const byDist = [...DATA.radars].map(r => ({ r, d: kmBetween(item.lat, item.lon, r.la, r.lo) })).sort((a, b) => a.d - b.d);
+      const cands = [], hr = pidHint ? radarById(pidHint.slice(3, -1)) : null;
+      if (hr && TYPE(pidHint.slice(-1)) === "0" && kmBetween(item.lat, item.lon, hr.la, hr.lo) <= (KMS[pidHint.slice(-1)] || 0)) cands.push(pidHint);
+      for (const near of byDist.slice(0, 2)) for (const [s, km] of [["4", 64], ["3", 128], ["2", 256], ["1", 512]]) if (near.d <= km) cands.push(`IDR${near.r.id}${s}`);
+      for (const pid of [...new Set(cands)]) {
+        try { await loopNames(pid); } catch { continue; }
+        let best = null;
+        for (const [n, t] of frameIndex.get(pid) || []) if (!best || Math.abs(t - ts) < Math.abs(best[1] - ts)) best = [n, t];
+        if (!best || Math.abs(best[1] - ts) > 20 * 60e3) continue;
+        let buf = null;
+        try { buf = await frameBuf(best[0]); } catch { /* try the next product */ }
+        if (!buf) continue;
+        await sightFile(item.id, "radar", { buf, type: "image/png" });
+        const r = radarById(pid.slice(3, -1)), rng = r ? kmBetween(item.lat, item.lon, r.la, r.lo) : null;
+        patch.radar = { pid, frame: new Date(best[1]).toISOString(), km: KMS[pid.slice(-1)], radar: r ? r.n : null };
+        if (rng != null) Object.assign(patch.radar, { range_km: +rng.toFixed(1), beam_km: +(rng * Math.sin(0.5 * Math.PI / 180) + rng * rng / (2 * 8495)).toFixed(2) });
+        break;
+      }
+    } catch { /* no radar copy */ }
+    try {
+      const age = (Date.now() - ts) / 864e5;
+      if (age >= -2 && age <= 90) {
+        const midnight = new Date().setHours(0, 0, 0, 0);
+        let past = 0;
+        if (ts < midnight + 3600e3) {          // before today's first model hour: ask for the days before as well
+          const need = Math.min(92, Math.ceil((midnight - ts) / 864e5) + 1);
+          past = [2, 7, 31, 92].find(b => b >= need);
+        }
+        const env = envAt(await pointEnv(item.lat, item.lon, past), ts / 1000);
+        if (env && env.temp != null) { for (const k of Object.keys(env)) if (env[k] == null) delete env[k]; patch.env = env; }
+      }
+    } catch { ok = false; /* offline: logged without the model environment for now */ }
+    if (!S_.get().some(x => x.id === item.id)) { sightFile(item.id, "radar", null); sightFile(item.id, "photo", null); return ok; }      // deleted meanwhile
+    if (Object.keys(patch).length) S_.set(S_.get().map(x => (x.id === item.id ? { ...x, ...patch } : x)));
+    return ok;
+  }
+  const dataUrlBuf = u => b64ToBuf(u.split(",")[1]);
+  // sightings logged with no connection get their forecast numbers once the phone is back online
+  const envEmpty = {};          // id -> rounds where the model answered but had nothing for that hour
+  async function sightingsBackfill() {
+    let done = 0;
+    for (const r of listStore("reports").get()) {
+      const age = (Date.now() - +new Date(r.t)) / 864e5;
+      if (r.env || !(age >= -2 && age <= 90) || (envEmpty[r.id] || 0) >= 6 || done >= 8) continue;
+      if (!(await snapshotSighting(r, null, true))) break;                 // offline or busy: next round, and it doesn't count as a try
+      done++;
+      if (listStore("reports").get().some(x => x.id === r.id && x.env)) window.dispatchEvent(new Event("radarhound-sightings"));
+      else envEmpty[r.id] = (envEmpty[r.id] || 0) + 1;
+      await new Promise(res => setTimeout(res, 5000));
+    }
+  }
+  setTimeout(sightingsBackfill, 45e3); setInterval(sightingsBackfill, 600e3);
+
   // ---------------------------------------------------------------- the router
   const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
   const bin = buf => new Response(buf, { headers: { "content-type": "application/octet-stream" } });
@@ -618,17 +753,60 @@ const WXP = (() => {
         if (body.wait !== false) await Promise.all(fresh.flatMap(id => ["3", "I"].map(s => loopNames(`IDR${id}${s}`).catch(() => null))));
         return json({ radars: followed(), new: fresh });
       }
+      case "env": return json(await envApi(q));
+      case "reports.csv": throw httpError(404, "export from the sightings list");
       case "spots": case "reports": case "cases": {
         const S_ = listStore(ep);
+        if (ep === "reports" && method === "GET" && parts[3]) {
+          const hit = await sightFile(parts[2], parts[3]);
+          if (!hit) throw httpError(404, "not saved for this sighting");
+          return hit;
+        }
         if (method === "POST") {
           const lat = +body.lat, lon = +body.lon;
-          if (ep !== "cases" && (!isFinite(lat) || !isFinite(lon))) throw httpError(400, "lat/lon out of range");
+          if (ep !== "cases" && (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180)) throw httpError(400, "lat/lon out of range");
+          const KINDS_OK = ["dustdevil", "funnel", "tornado", "hail", "wind", "rain", "lightning", "wallcloud", "shelf", "other"];
+          let size = null, when = null;
+          if (ep === "reports") {
+            size = body.size == null || body.size === "" ? null : +body.size;
+            if (size != null && !(size >= 0 && size <= 300)) throw httpError(400, "lat/lon or size out of range");
+            const ts = String(body.t || new Date().toISOString());
+            when = new Date(/Z$|[+-]\d\d:?\d\d$/.test(ts) ? ts : ts + "Z");          // no zone given: UTC, as the server reads it
+            if (isNaN(+when)) throw httpError(400, "need lat, lon, kind");
+            if (body.photo != null && body.photo !== "" && !(typeof body.photo === "string" && body.photo.startsWith("data:image/jpeg;base64,") && body.photo.length < 4.2e6))
+              throw httpError(400, "photo must be a JPEG under 3 MB");
+          }
           const item = ep === "spots" ? { name: String(body.name || "Spot").slice(0, 40), lat: +lat.toFixed(4), lon: +lon.toFixed(4) }
-            : ep === "reports" ? { lat: +lat.toFixed(4), lon: +lon.toFixed(4), kind: String(body.kind || "other").slice(0, 20), size: body.size ? +body.size : null, note: String(body.note || "").slice(0, 200), t: body.t || new Date().toISOString() }
+            : ep === "reports" ? { lat: +lat.toFixed(4), lon: +lon.toFixed(4), kind: KINDS_OK.includes(body.kind) ? body.kind : "other", size, note: String(body.note || "").slice(0, 200), t: when.toISOString() }
             : { ...body };
           item.id = ep === "spots" ? `${item.lat},${item.lon}` : ep === "reports" ? `r${Date.now()}` : `${body.radar}-${body.date}-${body.scan}`;
-          S_.set(S_.get().filter(x => x.id !== item.id).concat([item]).slice(-500));
-        } else if (method === "DELETE") S_.set(S_.get().filter(x => x.id !== decodeURIComponent(parts[2])));
+          if (ep === "reports") { const ids = new Set(S_.get().map(x => x.id)); let n = Date.now(); while (ids.has(`r${n}`)) n++; item.id = `r${n}`; }      // never reuse an id
+          if (ep === "reports") {
+            if (typeof body.cid === "string" && /^[\w.-]{6,64}$/.test(body.cid)) {      // sent again after a lost answer: not stored twice
+              const dup = S_.get().find(x => x.cid === body.cid);
+              if (dup) return json({ reports: S_.get(), id: dup.id });
+              item.cid = body.cid;
+            }
+            if (body.olat != null && body.olat !== "" && body.olon != null && body.olon !== "" && Math.abs(+body.olat) <= 90 && Math.abs(+body.olon) <= 180) { item.olat = +(+body.olat).toFixed(4); item.olon = +(+body.olon).toFixed(4); }
+            if (["gps", "pin", "home", "map"].includes(body.src)) item.src = body.src;
+            if (body.acc != null && body.acc !== "" && isFinite(+body.acc) && +body.acc >= 0) item.acc = Math.round(Math.min(+body.acc, 1e6));
+            if (typeof body.photo === "string" && body.photo.startsWith("data:image/jpeg;base64,")) {
+              try { await sightFile(item.id, "photo", { buf: dataUrlBuf(body.photo), type: "image/jpeg" }); item.photo = true; } catch { /* no room: logged without the photo */ }
+            }
+          }
+          const all = S_.get().filter(x => x.id !== item.id).concat([item]);
+          if (ep === "reports") for (const old of all.slice(0, -500)) { sightFile(old.id, "photo", null); sightFile(old.id, "radar", null); }
+          S_.set(all.slice(-500));
+          if (ep === "reports" && !S_.get().some(x => x.id === item.id)) {      // the phone's storage is full: say so, so the page keeps it queued
+            sightFile(item.id, "photo", null);
+            throw httpError(507, "the phone's storage is full");
+          }
+          if (ep === "reports") { snapshotSighting(item, /^IDR\w{2,5}$/.test(body.pid || "") ? body.pid : null).then(() => window.dispatchEvent(new Event("radarhound-sightings"))); return json({ reports: S_.get(), id: item.id }); }
+        } else if (method === "DELETE") {
+          const id = decodeURIComponent(parts[2]);
+          S_.set(S_.get().filter(x => x.id !== id));
+          if (ep === "reports") { sightFile(id, "photo", null); sightFile(id, "radar", null); }
+        }
         return json({ [ep]: S_.get() });
       }
       case "speech": throw httpError(503, "phone voice");
@@ -669,5 +847,5 @@ const WXP = (() => {
 
   document.documentElement.classList.add("phone-mode");
   return { http, cached, home, followed, myRadars, radarById, radarPoint, frameBuf, loopNames, frameIndex, frameBytes, LTG, ltgConnect, DATA, ready, NAT,
-    fcgrid, forecast, warnings: bomWarnings, warningText, stateObs, STATE_OF, dist, loadImageUrl, native, LS, origFetch, KM, nameTime };
+    fcgrid, pointEnv, ddIndex, forecast, warnings: bomWarnings, warningText, stateObs, STATE_OF, dist, loadImageUrl, native, LS, origFetch, KM, nameTime };
 })();

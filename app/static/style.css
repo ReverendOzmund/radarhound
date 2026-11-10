@@ -590,3 +590,55 @@ html.phone-mode .brand::after { content: " phone"; font-size: 12px; color: var(-
 .brand-mark { width: 30px; height: 30px; flex: none; }
 @media (max-width: 820px) { .brand-mark { width: 26px; height: 26px; } }
 @media (max-width: 820px) { .top .get-app { display: none; } }
+
+/* ---------------------------------------------------------------- toolbar: view switch + chips */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.toolbar .map-chips { display: contents; }
+.toolbar #sightChip, .toolbar #modesChip, .toolbar #findChip { order: -1; }
+body.kiosk .toolbar { display: none !important; }
+.chip.sight { color: #ffd9a0; border-color: #8a5a2a; background: rgba(120, 70, 20, .45); font-weight: 600; }
+@media (max-width: 820px) {
+  /* phones: the four views share one full-width row (nothing cut off); the tools scroll on the row below */
+  .toolbar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 6px; min-width: 0; }
+  .toolbar #viewSeg { order: 0; width: 100%; }
+  .toolbar #viewSeg button { flex: 1 1 0; min-width: 0; padding: 8px 2px; white-space: nowrap; text-align: center; font-size: clamp(12px, 3.7vw, 15px); }
+  .toolbar .map-chips { display: flex; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; max-width: 100%; min-width: 0; }
+  .toolbar #sightChip, .toolbar #modesChip, .toolbar #findChip { order: 0; }
+}
+
+/* ---------------------------------------------------------------- sightings */
+.sight-card { width: min(460px, 94vw); }
+.sight-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 6px; }
+.sight-kinds button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 8px; color: var(--text); cursor: pointer; font: inherit; font-size: 14px; text-align: left; display: flex; align-items: center; gap: 7px; }
+.sight-kinds button i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.sight-kinds button[aria-checked="true"] { border-color: var(--amber); background: rgba(242, 169, 59, .16); font-weight: 600; }
+.sight-away { display: flex; gap: 6px; min-width: 0; }
+.sight-away > * { min-width: 0; flex: 1; }
+.sight-away .tbtn { flex: none; }
+.home-card select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; color: var(--text); font-family: var(--num); font-size: 15px; min-width: 0; }
+.home-card input[type="file"] { font-size: 13px; min-width: 0; }
+.sight-log { width: min(760px, 96vw); max-height: 90vh; display: flex; flex-direction: column; gap: 10px; }
+.sight-list { overflow-y: auto; display: grid; gap: 10px; }
+.sight-item { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; background: rgba(0, 0, 0, .12); }
+.sight-item header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.sight-item header b { font-size: 15px; }
+.sight-item header .link-btn { float: none; margin-left: auto; }
+.sight-item header .link-btn + .link-btn { margin: 0; }
+.sight-env { display: flex; flex-wrap: wrap; gap: 5px; }
+.sight-env span { background: #1b2c35; border-radius: 6px; padding: 2px 7px; font-family: var(--num); font-size: 13px; white-space: nowrap; }
+.sight-env span small { color: var(--dim); margin-right: 4px; }
+.sight-env span.hi { background: rgba(242, 169, 59, .22); color: #ffd9a0; }
+.sight-pics { display: flex; gap: 8px; flex-wrap: wrap; }
+.sight-pics img { max-width: min(100%, 340px); max-height: 240px; border-radius: 8px; border: 1px solid var(--line); background: #0b1820; }
+.sight-pics figure { margin: 0; display: grid; gap: 3px; }
+.sight-pics figcaption { font-size: 12px; color: var(--dim); }
+@media (max-width: 820px) { .sight-log { max-height: none; } }
+
+/* dust devil line on the "Right now" card */
+.now-dd { margin-top: 8px; width: 100%; text-align: left; background: #1b2c35; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 9px; }
+.now-dd .dd-score { font-family: var(--num); font-size: 19px; font-weight: 600; min-width: 2.2em; text-align: center; border-radius: 6px; padding: 1px 6px; color: #0f1a20; }
+.now-dd small { color: var(--dim); display: block; }
+
+/* range caveat: how high the radar beam is */
+.beam-note { color: #ff9a7a; font-family: var(--num); font-size: 12px; font-style: normal; white-space: nowrap; }
+.beam-warn { margin: 8px 0 0; padding: 6px 9px; border-left: 3px solid #ff9a7a; background: rgba(255, 154, 122, .09); border-radius: 0 6px 6px 0; font-size: 13px; color: #f0c8bc; }

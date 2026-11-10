@@ -100,6 +100,29 @@ function cellTrend(c) {
 }
 const trendIcon = t => (t > 0 ? "<b class='hot'>▲ strengthening</b>" : t < 0 ? "<span class='dim'>▼ weakening</span>" : "<span class='dim'>steady</span>");
 
+// ---------------------------------------------------------------- how high the radar is looking
+// The lowest scan (taken as 0.5 degrees, typical for BoM) climbs with distance and the Earth curves away under
+// it: roughly 1 km above the radar at 80 km, 3 km at 165 km, 6 km at 255 km, 13 km at 400 km, 19 km at 500 km.
+// Far from the radar a cell's dBZ is measured high in the storm (or over the top of it), and the beam is wide
+// enough to be only partly filled, so it says little about the rain, hail or wind at the ground.
+const BEAM_NOTE_KM = 3, BEAM_HIGH_KM = 6;
+function beamHeightKm(rangeKm, elevDeg = 0.5) { return rangeKm * Math.sin(elevDeg * Math.PI / 180) + rangeKm * rangeKm / (2 * 8495); }
+// rough beam height above the radar at a point on the live single-radar view (null on the national map, satellite,
+// forecast or raw volumes, and outside the product's own coverage)
+function liveBeamKm(x, y) {
+  if (!S.radar || S.mode !== "live" || isNational() || S.settings.view === "sat" || S.settings.view === "fc") return null;
+  if (!S.product || !["0", "2"].includes(S.product.type || "0")) return null;
+  if (S.product.km && Math.max(Math.abs(x), Math.abs(y)) > S.product.km) return null;
+  return beamHeightKm(Math.hypot(x, y));
+}
+const beamShort = b => `~${b < 10 ? b.toFixed(1) : Math.round(b)} km up`;
+function beamCaveat(b) {
+  if (b == null || b < BEAM_NOTE_KM) return "";
+  return b >= BEAM_HIGH_KM
+    ? `The radar beam is roughly ${b < 10 ? b.toFixed(1) : Math.round(b)} km up at this range: it is looking at the upper part of the storm, so what reaches the ground can differ a lot from what is shown (often stronger), and shallow storms are missed altogether.`
+    : `The radar beam is roughly ${b.toFixed(1)} km up at this range, above the lowest part of the storm: intensity at the ground may differ from what is shown.`;
+}
+
 function drawCells() {
   const cells = currentCells();
   if (!cells) return;
@@ -129,9 +152,14 @@ function drawCells() {
     ctx.fillStyle = "#ffffff";
     ctx.beginPath(); ctx.arc(cx, cy, 2.5 * d, 0, Math.PI * 2); ctx.fill();
     const tr = cellTrend(c);
-    const lab = `${Math.round(REFL_DBZ[Math.min(14, c.max)])}${tr > 0 ? "▲" : tr < 0 ? "▼" : ""}`;
-    ctx.fillStyle = "rgba(15,26,32,.85)"; ctx.fillRect(cx + 5 * d, cy - 15 * d, ctx.measureText(lab).width + 8 * d, 14 * d);
+    // range caveat: far from the radar the beam is high in the storm, so the label says how high (one line, to keep clusters readable)
+    const beam = liveBeamKm(c.x, c.y), far = beam != null && beam >= BEAM_NOTE_KM;
+    const lab = `${far && beam >= BEAM_HIGH_KM ? "~" : ""}${Math.round(REFL_DBZ[Math.min(14, c.max)])}${tr > 0 ? "▲" : tr < 0 ? "▼" : ""}`;
+    const note = far ? ` ↑${beam < 10 ? beam.toFixed(1) : Math.round(beam)} km` : "";
+    const w1 = ctx.measureText(lab).width, w2 = note ? ctx.measureText(note).width : 0;
+    ctx.fillStyle = "rgba(15,26,32,.85)"; ctx.fillRect(cx + 5 * d, cy - 15 * d, w1 + w2 + 8 * d, 14 * d);
     ctx.fillStyle = "#f2d6a0"; ctx.fillText(lab, cx + 9 * d, cy - 4 * d);
+    if (note) { ctx.fillStyle = beam >= BEAM_HIGH_KM ? "#ff9a7a" : "#9fb4bd"; ctx.fillText(note, cx + 9 * d + w1, cy - 4 * d); }
   }
 }
 
@@ -154,8 +182,9 @@ function renderCellPanel() {
     const spd = Math.hypot(c.vx || 0, c.vy || 0), dir = bearingOf(c.vx || 0, c.vy || 0);
     const what = a.over ? `<b class="hot">over ${esc(home.name)} now</b>`
       : `<b class="hot">reaches ${esc(home.name)} in ~${Math.max(1, Math.round(a.t * 60))} min</b>${a.miss > 3 ? `, passing ${a.miss.toFixed(0)} km away` : ""}`;
-    html += `<div class="cell-row"><span class="cell-dbz">${Math.round(REFL_DBZ[Math.min(14, c.max)])} dBZ</span>
-      <span>${hh.dist.toFixed(0)} km ${compass(hh.brg)}${spd >= 5 ? `, moving ${compass(dir)} at ${spd.toFixed(0)} km/h` : ", near stationary"}. ${what}. ${trendIcon(cellTrend(c))}</span></div>`;
+    const bm = liveBeamKm(c.x, c.y);
+    html += `<div class="cell-row"><span class="cell-dbz">${bm != null && bm >= BEAM_HIGH_KM ? "~" : ""}${Math.round(REFL_DBZ[Math.min(14, c.max)])} dBZ</span>
+      <span>${hh.dist.toFixed(0)} km ${compass(hh.brg)}${spd >= 5 ? `, moving ${compass(dir)} at ${spd.toFixed(0)} km/h` : ", near stationary"}. ${what}. ${trendIcon(cellTrend(c))}${bm != null && bm >= BEAM_NOTE_KM ? ` <span class="beam-note">beam ${beamShort(bm)}</span>` : ""}</span></div>`;
   }
   // strongest cells anywhere in view, with their trend
   const strong = cells.filter(c => !coming.some(o => o.c === c)).sort((a, b) => b.max - a.max || b.area - a.area).slice(0, 3);
@@ -164,9 +193,14 @@ function renderCellPanel() {
     for (const c of strong) {
       const [lat, lon] = kmToLatLon(c.x, c.y), hh = haversine(home.lat, home.lon, lat, lon);
       const spd = Math.hypot(c.vx || 0, c.vy || 0), dir = bearingOf(c.vx || 0, c.vy || 0);
-      html += `<div class="cell-row"><span class="cell-dbz">${Math.round(REFL_DBZ[Math.min(14, c.max)])} dBZ</span>
-        <span>${hh.dist.toFixed(0)} km ${compass(hh.brg)} of ${esc(home.name)}, ${c.area.toFixed(0)} km²${c.age >= 2 && spd >= 5 ? `, moving ${compass(dir)} at ${spd.toFixed(0)} km/h` : ""}. ${trendIcon(cellTrend(c))}</span></div>`;
+      const bm = liveBeamKm(c.x, c.y);
+      html += `<div class="cell-row"><span class="cell-dbz">${bm != null && bm >= BEAM_HIGH_KM ? "~" : ""}${Math.round(REFL_DBZ[Math.min(14, c.max)])} dBZ</span>
+        <span>${hh.dist.toFixed(0)} km ${compass(hh.brg)} of ${esc(home.name)}, ${c.area.toFixed(0)} km²${c.age >= 2 && spd >= 5 ? `, moving ${compass(dir)} at ${spd.toFixed(0)} km/h` : ""}. ${trendIcon(cellTrend(c))}${bm != null && bm >= BEAM_NOTE_KM ? ` <span class="beam-note">beam ${beamShort(bm)}</span>` : ""}</span></div>`;
     }
   }
+  const listed = coming.slice(0, 6).map(o => o.c).concat(strong);
+  const highest = listed.reduce((m, c) => Math.max(m, liveBeamKm(c.x, c.y) ?? 0), 0);
+  if (highest >= BEAM_NOTE_KM)
+    html += `<p class="beam-warn">${beamCaveat(highest).replace("at this range", "at the farthest cell listed")}${highest >= BEAM_HIGH_KM ? " A closer radar (radar picker) or a shorter range gives a truer reading." : ""}</p>`;
   body.innerHTML = html;
 }

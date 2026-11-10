@@ -31,12 +31,14 @@
 <main class="layout">
   <section class="scope">
     <div class="fav-chips" id="favChips" hidden></div>
-    <div class="map-chips">
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="View" id="viewSeg">
+        <button data-view="radar">Radar</button><button data-view="both">Both</button><button data-view="sat">Satellite</button><button data-view="fc">Forecast</button>
+      </div>
+      <div class="map-chips">
+        <button id="sightChip" class="chip sight" title="Log what you can see: dust devil, funnel, hail, wind damage… (S)">👁 Log sighting</button>
         <button id="modesChip" class="chip modes" title="One-click setups for storms, shear, CAPE, rotation, hail and more">◧ Modes</button>
         <button id="findChip" class="chip" title="Find a town, suburb or address on the map (F)">🔎 Find</button>
-        <div class="seg" role="group" aria-label="View" id="viewSeg">
-          <button data-view="radar">Radar</button><button data-view="both">Both</button><button data-view="sat">Satellite</button><button data-view="fc">Forecast</button>
-        </div>
         <button id="ltgChip" class="chip" aria-pressed="true" title="Toggle lightning (L)">⚡ Lightning</button>
         <div class="seg" role="group" aria-label="Panes" id="layoutSeg">
           <button data-layout="1" title="Single pane">1</button><button data-layout="2" title="Two panes">2</button><button data-layout="4" title="Four panes" class="chaser">4</button>
@@ -50,6 +52,7 @@
         <button id="warnChip" class="chip warn" hidden title="Current BoM warnings"></button>
         <button id="wxwChip" class="chip wxw" hidden title="Radarhound automated warnings and watches"></button>
       </div>
+    </div>
     <div class="scope-frame" id="scopeFrame">
       <div class="panes" id="panes" data-layout="1">
         <div class="pane" data-pane="0"><canvas id="radar" aria-label="Radar display"></canvas><canvas id="particles" class="particles" hidden></canvas><div class="pane-label" id="paneLabel0"></div></div>
@@ -165,7 +168,8 @@
         <label class="check" data-tip="Airport reports (METAR): cloud base, visibility, present weather. Colour = flight category: green VFR, blue MVFR, red IFR, magenta LIFR"><input type="checkbox" id="lyrMetar"> Airport obs (METAR)</label>
         <label class="check" id="lyrCamsWrap" hidden data-tip="Public webcams (Windy). Tap one to see its latest picture"><input type="checkbox" id="lyrCams"> Webcams</label>
         <label class="check" data-tip="NASA FIRMS satellite hotspots from the last 24 hours"><input type="checkbox" id="lyrFires"> Fires (24 h)</label>
-        <label class="check" data-tip="Hail, wind, flooding and tornado reports you've logged with the pin's Report button"><input type="checkbox" id="lyrReports" checked> Storm reports</label>
+        <label class="check" data-tip="What you've logged with Log sighting: dust devils, funnels, hail, wind damage. Shown for 24 hours after each one"><input type="checkbox" id="lyrReports" checked> Sightings</label>
+        <button class="tbtn" id="sightLogBtn" type="button" title="Every sighting you've logged, with the forecast environment and radar at the time">Sightings log</button>
       </div>
       <div class="tuning-grid" data-group="radar" hidden>
         <label>Colour table
@@ -200,9 +204,9 @@
         <label class="check" data-tip="Areas where the forecast model shows ingredients for severe weather in the next 12 hours"><input type="checkbox" id="lyrWatches" checked> Model watches</label>
         <label class="check chaser" data-tip="Spots on the live Doppler image where wind blows towards and away from the radar side by side: possible rotation"><input type="checkbox" id="lyrCouplets" checked> Live Doppler couplets</label>
         <label class="check pro" data-tip="Mesocyclone, tornado vortex and debris detections from full-resolution archive scans"><input type="checkbox" id="lyrRotDet" checked> Rotation detection (archive)</label>
-        <label class="chaser" data-tip="Contours of a model ingredient over the radar. STP 1+ and SCP 1+ mark tornado and supercell-friendly air">Environment overlay <select id="envOverlay">
+        <label class="chaser" data-tip="Contours of a model ingredient over the radar. STP 1+ and SCP 1+ mark tornado and supercell-friendly air; dust devil potential 4+ means likely">Environment overlay <select id="envOverlay">
           <option value="none">None</option><option value="stp">STP (tornado)</option><option value="scp">SCP (supercell)</option>
-          <option value="srh1">0–1 km helicity</option><option value="shear6">0–6 km shear</option>
+          <option value="srh1">0–1 km helicity</option><option value="shear6">0–6 km shear</option><option value="ddp">Dust devil potential</option>
         </select></label>
       </div>
       <div class="tuning-grid" data-group="alerts" hidden>
@@ -257,6 +261,7 @@
       <div class="now-line" id="nowLine">Checking the radar…</div>
       <div class="now-bars" id="nowBars" aria-label="Rain over the next hour"></div>
       <div class="now-facts" id="nowFacts"></div>
+      <button class="now-dd" id="nowDd" type="button" hidden title="Dust devil potential from the forecast model. Tap for the map layer"></button>
       <div class="now-actions"><button class="tbtn" id="briefBtn" type="button" title="Today's forecast, warnings and rain, read aloud">🔊 Read me today</button><span class="dim" id="briefText"></span></div>
     </section>
 
@@ -301,7 +306,7 @@
     </section>
 
     <section class="panel" id="pinPanel" hidden>
-      <h2>Pinned point <button class="link-btn" id="pinClear" title="Clear (Esc)">clear</button><button class="link-btn" id="pinHome" title="Use this point as home">make home</button><button class="link-btn" id="pinFc" title="Forecast and sounding for this point">forecast here</button><button class="link-btn" id="pinSpot" title="Save as a favourite spot">save spot</button><button class="link-btn" id="pinReport" title="Log a storm report here">report</button></h2>
+      <h2>Pinned point <button class="link-btn" id="pinClear" title="Clear (Esc)">clear</button><button class="link-btn" id="pinHome" title="Use this point as home">make home</button><button class="link-btn" id="pinFc" title="Forecast and sounding for this point">forecast here</button><button class="link-btn" id="pinSpot" title="Save as a favourite spot">save spot</button><button class="link-btn" id="pinReport" title="Log a sighting at this point">log sighting</button></h2>
       <div id="pinBody"></div>
     </section>
 
@@ -396,15 +401,29 @@
     <div class="modes-list" id="modesList"></div>
   </div>
 </div>
-<div class="help" id="repDlg" hidden role="dialog" aria-label="Storm report">
-  <div class="help-card home-card">
-    <h2>Log a storm report</h2>
-    <p class="home-note">Saved on your server and shown on the map for 24 hours after the time you give.</p>
-    <label>What <select id="repKind"><option value="hail">Hail</option><option value="wind">Wind damage</option><option value="rain">Heavy rain / flooding</option><option value="funnel">Funnel / tornado</option><option value="lightning">Lightning damage</option><option value="other">Other</option></select></label>
-    <label>Hail size (mm) <input id="repSize" type="number" min="0" max="200" step="1"></label>
-    <label>When <input id="repTime" type="datetime-local"></label>
-    <label>Notes <input id="repNote" maxlength="200"></label>
-    <div class="home-actions end"><button id="repCancel" type="button">Cancel</button><button id="repSave" type="button" class="primary">Save</button></div>
+<div class="help" id="repDlg" hidden role="dialog" aria-modal="true" aria-label="Log a sighting">
+  <div class="help-card home-card sight-card">
+    <h2>Log a sighting</h2>
+    <div class="sight-kinds" id="repKinds" role="radiogroup" aria-label="What did you see"></div>
+    <label>Where <select id="repWhere" aria-label="Location of the sighting"></select></label>
+    <label>It was <span class="sight-away"><select id="repDir" aria-label="Direction from that spot">
+      <option value="">right there</option><option value="0">to the N</option><option value="45">to the NE</option><option value="90">to the E</option><option value="135">to the SE</option>
+      <option value="180">to the S</option><option value="225">to the SW</option><option value="270">to the W</option><option value="315">to the NW</option>
+    </select><input id="repDist" type="number" min="0" max="300" step="0.5" placeholder="km away" aria-label="Distance in km" hidden></span></label>
+    <p class="home-note" id="repWhereNote"></p>
+    <label id="repSizeWrap" hidden>Hail size (mm) <input id="repSize" type="number" min="0" max="200" step="1"></label>
+    <label>When <span class="sight-away"><input id="repTime" type="datetime-local"><button class="tbtn" id="repNow" type="button">now</button></span></label>
+    <label>Notes <input id="repNote" maxlength="200" placeholder="Size, how long it lasted, damage…"></label>
+    <label>Photo <input id="repPhoto" type="file" accept="image/*"></label>
+    <p class="home-note">Saved with the radar frame and the forecast model's numbers for that spot and hour, so you can check afterwards what the forecast got right.</p>
+    <div class="home-actions end"><button id="repCancel" type="button">Cancel</button><button id="repSave" type="button" class="primary">Save sighting</button></div>
+  </div>
+</div>
+<div class="help" id="sightDlg" hidden role="dialog" aria-modal="true" aria-label="Sightings log">
+  <div class="help-card sight-log">
+    <div class="snd-head"><h2>Sightings log</h2><button class="tbtn" id="sightNew" type="button">Log sighting</button><button class="tbtn" id="sightCsv" type="button" title="Download every sighting with its forecast numbers as a spreadsheet file">Export CSV</button><button id="sightClose" title="Close">×</button></div>
+    <p class="home-note">Each sighting keeps the forecast model's numbers for that spot and hour and the radar frame nearest that time. Use them to see which ingredients tracked what you saw.</p>
+    <div class="sight-list" id="sightList"></div>
   </div>
 </div>
 <div class="help" id="help" hidden role="dialog" aria-label="Keyboard shortcuts">
@@ -423,6 +442,7 @@
       <dt>C</dt><dd>Storm cell tracking (live reflectivity)</dd>
       <dt>X</dt><dd>Cross-section tool (raw volume): drag a line A to B</dd>
       <dt>Esc</dt><dd>Clear pin, ruler or this panel</dd>
+      <dt>S</dt><dd>Log a sighting (dust devil, funnel, hail, wind damage…); in raw volume mode S is storm-relative velocity</dd>
       <dt>Ctrl + K or /</dt><dd>Command search: layers, radars, modes, places, settings</dd>
       <dt>N</dt><dd>Jump to the newest frame</dd>
       <dt>I</dt><dd>What am I looking at? (explains the current product)</dd>
@@ -444,6 +464,8 @@
 <script src="/static/modes.js?v=22"></script>
 <script src="/static/sounding.js?v=22"></script>
 <script src="/static/panels.js?v=22"></script>
+<script src="/static/dustdevil.js?v=22"></script>
+<script src="/static/sightings.js?v=22"></script>
 <script src="/static/icons.js?v=22"></script>
 <script src="/static/health.js?v=22"></script>
 <script src="/static/phone-engine.js"></script>

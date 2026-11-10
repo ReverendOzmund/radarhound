@@ -322,7 +322,7 @@ function fcPaneValue(p, x, y) {
     const u = fcSample("u", x, y, null, W), w = fcSample("v", x, y, null, W);
     if (u != null) extra = L.vec ? ` from ${compass(bearingOf(-u, -w))}` : `, wind ${compass(bearingOf(-u, -w))} ${Math.hypot(u, w).toFixed(0)} km/h`;
   }
-  const dp = L.key === "aod" ? 2 : (L.unit === "hPa" || L.kind === "marine") ? 1 : 0;
+  const dp = L.key === "aod" ? 2 : (L.unit === "hPa" || L.kind === "marine" || (L.kind === "dd" && L.key !== "blh")) ? 1 : 0;
   return { html: `${v.toFixed(dp)} <small>${L.unit}${extra}</small>`, color: c ? `rgb(${c.join(",")})` : null };
 }
 
@@ -344,7 +344,7 @@ function syncFcControls() {
 // wind (or swell) particles on an overlay above pane 1
 function particleField() {
   const L = FC_LAYERS[S.settings.fcLayer];
-  const kind = L.kind === "level" ? `p${S.settings.fcLevel}` : L.kind === "marine" ? "marine" : "sfc";
+  const kind = L.kind === "level" ? `p${S.settings.fcLevel}` : L.kind === "marine" ? "marine" : L.kind === "dd" ? "dd" : "sfc";
   return { D: fcData(kind, fcModelOf(null)), swell: kind === "marine", jet: L.kind === "level" };
 }
 function startParticles() {
@@ -615,12 +615,15 @@ function fireNear(x, y) {
   return best && best.dd * S.view.scale < 10 * dpr() ? best.f : null;
 }
 
-// ---------------------------------------------------------------- storm reports (your own spotter log)
-const REPORT_KINDS = { hail: "Hail", wind: "Wind damage", rain: "Heavy rain / flooding", funnel: "Funnel / tornado", lightning: "Lightning damage", other: "Other" };
+// ---------------------------------------------------------------- sightings (your own spotter log); the dialog and log live in sightings.js
+const REPORT_KINDS = { dustdevil: "Dust devil", funnel: "Funnel cloud", tornado: "Tornado", hail: "Hail", wind: "Wind damage", rain: "Heavy rain / flooding",
+  lightning: "Lightning damage", wallcloud: "Wall cloud / rotation", shelf: "Shelf cloud / gust front", other: "Other" };
+const REPORT_STYLE = { dustdevil: ["#d9a45a", "D"], funnel: ["#ff7a59", "F"], tornado: ["#e0261f", "T"], hail: ["#62b6ea", "H"], wind: ["#f2a93b", "W"], rain: ["#2fd16c", "R"],
+  lightning: ["#ffe14a", "L"], wallcloud: ["#c58bff", "C"], shelf: ["#9fb4bd", "S"], other: ["#d6e2e4", "?"] };
 S.reports = [];
 async function loadReports() {
   const r = await fetch("/api/reports").then(r => r.json()).catch(() => null);
-  if (r) { S.reports = r.reports; draw(); }
+  if (r) { S.reports = r.reports; draw(); if (typeof renderSightings === "function") renderSightings(); }
 }
 function drawReports() {
   if (!S.settings.reports || !S.reports.length || !S.radar) return;
@@ -632,38 +635,31 @@ function drawReports() {
     const t = +new Date(r.t);
     if (t > end + 60e3 || end - t > 24 * 3600e3) continue;          // the 24 h before the frame shown
     const [sx, sy] = kmToScreen(...latLonToKm(r.lat, r.lon));
-    const col = { hail: "#62b6ea", wind: "#f2a93b", rain: "#2fd16c", funnel: "#e0261f", lightning: "#ffe14a" }[r.kind] || "#d6e2e4";
+    const [col, letter] = REPORT_STYLE[r.kind] || REPORT_STYLE.other;
+    if (r.olat != null && r.olon != null) {                          // a line from where you stood to what you saw
+      const [ox, oy] = kmToScreen(...latLonToKm(r.olat, r.olon));
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5 * d; ctx.setLineDash([3 * d, 3 * d]);
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(sx, sy); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(ox, oy, 3 * d, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.fillStyle = col; ctx.strokeStyle = "#0f1a20"; ctx.lineWidth = 2 * d;
     ctx.beginPath(); ctx.rect(sx - 8 * d, sy - 8 * d, 16 * d, 16 * d); ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#0f1a20";
-    ctx.fillText({ hail: "H", wind: "W", rain: "R", funnel: "T", lightning: "L" }[r.kind] || "?", sx, sy + 4 * d);
+    ctx.fillText(letter, sx, sy + 4 * d);
   }
   ctx.textAlign = "start";
 }
 function reportNear(x, y) {
   let best = null;
+  const end = +(overlayEnd() || Date.now());
   for (const r of S.reports) {
+    const t = +new Date(r.t);
+    if (t > end + 60e3 || end - t > 24 * 3600e3) continue;          // only the ones drawn
     const [rx, ry] = latLonToKm(r.lat, r.lon), dd = Math.hypot(rx - x, ry - y);
     if (!best || dd < best.dd) best = { r, dd };
   }
   return best && best.dd * S.view.scale < 12 * dpr() ? best.r : null;
 }
-function openReportDialog() {
-  if (!S.pin) return;
-  const t = currentTime() || new Date();
-  $("repKind").value = "hail"; $("repSize").value = ""; $("repNote").value = "";
-  $("repTime").value = new Date(+t - new Date().getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
-  $("repDlg").hidden = false;
-}
-$("repCancel").onclick = () => { $("repDlg").hidden = true; };
-$("repSave").onclick = async () => {
-  const [lat, lon] = kmToLatLon(...S.pin);
-  const body = { lat, lon, kind: $("repKind").value, size: $("repSize").value, note: $("repNote").value, t: new Date($("repTime").value).toISOString() };
-  const r = await fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(r => r.json()).catch(() => null);
-  if (r) { S.reports = r.reports; S.settings.reports = true; save(); $("lyrReports").checked = true; }
-  $("repDlg").hidden = true; draw(); updateReadout();
-};
-$("pinReport").onclick = () => openReportDialog();
 
 // ---------------------------------------------------------------- your location (needs https or localhost)
 S.me = null;
@@ -673,7 +669,7 @@ function toggleMe() {
   if (!navigator.geolocation || !window.isSecureContext) { alert("Browsers only share your location over https or on localhost."); return; }
   $("meChip").setAttribute("aria-pressed", "true");
   meWatch = navigator.geolocation.watchPosition(p => {
-    S.me = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, heading: p.coords.heading };
+    S.me = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, heading: p.coords.heading, t: Date.now() };
     draw(); updateReadout();
   }, err => { alert(`Location unavailable: ${err.message}`); toggleMe(); }, { enableHighAccuracy: true, maximumAge: 10000 });
 }

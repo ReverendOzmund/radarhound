@@ -20,13 +20,13 @@ from pathlib import Path
 from urllib.parse import quote
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import archive, bomftp, bomwarn, derived, extras, himawari, lightning, national, nowcast, satellite, speech, verify, warnings_engine as wxw
+from . import archive, bomftp, bomwarn, derived, dustdevil, extras, himawari, lightning, national, nowcast, satellite, speech, verify, warnings_engine as wxw
 from zoneinfo import ZoneInfo
 import numpy as np
 
@@ -507,7 +507,8 @@ async def run_warnings():
     try:
         bom = [{"id": b["id"], "title": b["title"], "text": b["title"] + " " + _bom_area_text(b["body"], b["kind"])}
                for b in await bom_severe() if b["kind"] in ("thunderstorm", "severe weather")]
-        await run_in_threadpool(verify.record, DATA, list(wxw.state["active"].values()), bom, list(REPORTS))
+        await run_in_threadpool(verify.record, DATA, list(wxw.state["active"].values()), bom,
+                                 [r for r in REPORTS if r.get("kind") != "dustdevil"])     # dust devils aren't storm reports
     except Exception:
         log.exception("verification log failed")
 
@@ -577,6 +578,7 @@ async def lifespan(app):
         asyncio.create_task(poller()),
         *( [asyncio.create_task(bomwarn.run(DATA, warning_feeds, ftp_ok=lambda: time.time() >= _ftp_down_until))] if RADAR_SOURCE != "web" else []),
         asyncio.create_task(lightning.collector(app.state.strikes, lightning_centres)),
+        asyncio.create_task(sightings_backfill()),
     ]
     yield
     for t in tasks:
@@ -1491,35 +1493,324 @@ async def get_obssounding(station: str | None = None):
     return snd
 
 
+# ---------------------------------------------------------------- sightings (your own spotter log)
+# Each sighting keeps where and when, an optional photo, a copy of the radar frame nearest that time and the
+# model environment at that spot and hour, so it can be compared against forecasts and radar afterwards
+# (radar frames are only kept for RETENTION_HOURS otherwise).
+SIGHTINGS = DATA / "sightings"
+SIGHTING_KINDS = ("dustdevil", "funnel", "tornado", "hail", "wind", "rain", "lightning", "wallcloud", "shelf", "other")
+_RID_RE = re.compile(r"^r\d{6,20}$")
+
+
+def _km(lat1, lon1, lat2, lon2):
+    return math.hypot((lat2 - lat1) * 111.11, (lon2 - lon1) * 111.11 * math.cos(math.radians((lat1 + lat2) / 2)))
+
+
+async def point_env(lat, lon, past_days=0):
+    """Hourly model environment at a point: surface, dust devil potential and storm ingredients.
+    The current series is cached; a look back (past_days) is a one-off for one sighting, so it isn't kept."""
+    lat, lon = round(lat, 2), round(lon, 2)
+
+    async def load():
+        r = await get_retry("https://api.open-meteo.com/v1/forecast", dustdevil.env_params(lat, lon, TZ_NAME, past_days))
+        return await run_in_threadpool(dustdevil.env_series, r.json(), extras._svr_point, lat < 0)
+    if past_days:
+        return await load()
+    return await cached(f"env|{lat},{lon}", 1800, load)
+
+
+@app.get("/api/env")
+async def get_env(lat: float | None = None, lon: float | None = None):
+    """Environment for the next 48 hours at a point (home when left out), with the dust devil outlook."""
+    plat, plon = query_point(lat, lon)
+    try:
+        series = await point_env(plat, plon)
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(429 if e.response.status_code == 429 else 502, f"environment unavailable: {e}")
+    except Exception as e:
+        raise HTTPException(502, f"environment unavailable: {type(e).__name__} {e}")
+    now = time.time()
+    ahead = [r for r in series if now - 3600 <= r["t"] <= now + 48 * 3600]
+    cur = dustdevil.env_at(series, now)
+    today = [r for r in ahead if r["t"] <= now + 18 * 3600 and r.get("ddp") is not None]
+    peak = max(today, key=lambda r: r["ddp"], default=None)
+    return {"point": [plat, plon], "now": cur, "peak": peak, "hours": ahead,
+            "label": dustdevil.label(cur.get("ddp") if cur else None), "peak_label": dustdevil.label(peak["ddp"] if peak else None)}
+
+
+def _snapshot_radar(rep_, pid_hint):
+    """Copy the reflectivity frame nearest the sighting time into the sightings folder."""
+    rt = datetime.fromisoformat(rep_["t"])
+    cands = []
+    known = list(products.items())            # the poller changes this dict while we look
+    hint = products.get(pid_hint) if pid_hint else None
+    hr = radars.get(hint.get("radar")) if hint else None
+    if (hint and (hint.get("type") or "0") == "0" and hint.get("km") and hr and hr.get("lat") is not None
+            and _km(rep_["lat"], rep_["lon"], hr["lat"], hr["lon"]) <= hint["km"]):      # only if it covers the spot
+        cands.append(pid_hint)
+    near = []
+    for pid, p in known:
+        r = radars.get(p.get("radar"))
+        if (p.get("type") or "0") != "0" or not p.get("km") or not r or r.get("lat") is None:
+            continue
+        d = _km(rep_["lat"], rep_["lon"], r["lat"], r["lon"])
+        if d <= p["km"]:
+            near.append((p["km"], d, pid))             # the tightest range that still covers the spot
+    cands += [pid for _, _, pid in sorted(near)]
+    for pid in dict.fromkeys(cands):
+        best = None
+        d = FRAMES / pid
+        if not d.exists():
+            continue
+        for f in d.glob("*.png"):
+            ft = frame_time(f.name)
+            if ft and (best is None or abs(ft - rt) < abs(best[0] - rt)):
+                best = (ft, f)
+        if best and abs(best[0] - rt) <= timedelta(minutes=20):
+            SIGHTINGS.mkdir(parents=True, exist_ok=True)
+            (SIGHTINGS / f"{rep_['id']}-radar.png").write_bytes(best[1].read_bytes())
+            p, r = products[pid], radars.get(products[pid].get("radar")) or {}
+            out = {"pid": pid, "frame": best[0].isoformat(), "km": p["km"], "radar": r.get("name")}
+            if r.get("lat") is not None:
+                rng = _km(rep_["lat"], rep_["lon"], r["lat"], r["lon"])
+                out.update(range_km=round(rng, 1), beam_km=round(beam_height_km(rng), 2))
+            return out
+    return None
+
+
+def beam_height_km(range_km, elev_deg=0.5):
+    """Height of the centre of the lowest radar beam above the radar (4/3 Earth refraction)."""
+    return range_km * math.sin(math.radians(elev_deg)) + range_km ** 2 / (2 * 8495.0)
+
+
+async def _snapshot_env(rep_):
+    """Model environment at the sighting's spot and hour. Returns "saved", "none" (the model has nothing for
+    that hour, or it's too old) or raises when Open-Meteo or the internet is unavailable."""
+    ts = datetime.fromisoformat(str(rep_["t"])).timestamp()
+    age_days = (time.time() - ts) / 86400
+    if not -2 <= age_days <= 90:
+        return "none"
+    midnight = datetime.now(ZoneInfo(TZ_NAME)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    past = 0
+    if ts < midnight + 3600:                  # before today's first model hour: ask for the days before as well
+        need = math.ceil((midnight - ts) / 86400) + 1
+        past = next(b for b in (2, 7, 31, 92) if b >= min(need, 92))
+    series = await point_env(rep_["lat"], rep_["lon"], past)
+    env = dustdevil.env_at(series, ts)
+    if not env or env.get("temp") is None:    # far enough back the model keeps only upper-air fields: not worth saving
+        return "none"
+    rep_["env"] = {k: v for k, v in env.items() if v is not None}
+    return "saved"
+
+
+def _radar_due(rep_):
+    """A radar frame is still wanted: none saved yet, or the one saved is older than the sighting and a
+    newer frame should have arrived by now (frames come every 5 to 10 minutes)."""
+    try:
+        rt = datetime.fromisoformat(str(rep_["t"]))
+        age = (datetime.now(timezone.utc) - rt).total_seconds()
+        if not 0 <= age <= RETENTION_HOURS * 3600:
+            return False
+        rad = rep_.get("radar")
+        if not rad:
+            return True
+        return datetime.fromisoformat(rad["frame"]) < rt and 600 < age < 3600
+    except Exception:
+        return False
+
+
+async def _snapshot_sighting(rid, pid_hint):
+    rep_ = next((r for r in REPORTS if r.get("id") == rid), None)
+    if not rep_:
+        return
+    try:
+        rad = await run_in_threadpool(_snapshot_radar, rep_, pid_hint)
+        if rad:
+            rep_["radar"] = rad
+    except Exception as e:
+        log.warning("sighting radar snapshot failed: %s", e)
+    try:
+        await _snapshot_env(rep_)
+    except Exception as e:      # Open-Meteo busy or the internet's down: sightings_backfill() tries again
+        log.warning("sighting environment snapshot failed (will retry): %s", str(e)[:160])
+    if not any(r.get("id") == rid for r in REPORTS):      # deleted while the snapshot ran: don't leave files behind
+        _drop_sighting_files(rid)
+        return
+    save_settings()
+
+
+async def sightings_backfill():
+    """Every 10 minutes: sightings logged while Open-Meteo or the internet was unavailable get their environment,
+    and recent ones get the radar frame that arrived after they were logged. Gentle on Open-Meteo: a few per
+    round with a pause between, and an outage doesn't use up a sighting's attempts."""
+    empty: dict = {}             # id -> rounds where the model answered but had nothing for that hour
+    while True:
+        await asyncio.sleep(600)
+        try:
+            done = 0
+            for rep_ in list(REPORTS):
+                rid = rep_.get("id")
+                if not rid or not isinstance(rep_.get("t"), str):
+                    continue
+                changed = False
+                if _radar_due(rep_):
+                    try:
+                        rad = await run_in_threadpool(_snapshot_radar, rep_, (rep_.get("radar") or {}).get("pid"))
+                        if rad and rad != rep_.get("radar"):
+                            rep_["radar"] = rad
+                            changed = True
+                    except Exception as e:
+                        log.info("sighting radar retry failed: %s", str(e)[:120])
+                if "env" not in rep_ and empty.get(rid, 0) < 6 and done < 8:
+                    try:
+                        if await _snapshot_env(rep_) == "saved":
+                            changed = True
+                        else:
+                            empty[rid] = empty.get(rid, 0) + 1
+                    except Exception as e:
+                        log.info("sighting environment retry failed: %s", str(e)[:120])
+                        done = 99                # the source is down: no more this round, and it doesn't count as a try
+                    else:
+                        done += 1
+                        await asyncio.sleep(5)
+                if changed and any(r.get("id") == rid for r in REPORTS):
+                    save_settings()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("sightings backfill round failed")
+
+
 @app.get("/api/reports")
 async def list_reports():
     return {"reports": REPORTS}
 
 
+SIGHTING_BODY_MAX = 6 * 1048576       # a shrunk photo is a few hundred kB; this is plenty
+
+
 @app.post("/api/reports")
-async def add_report(body: dict):
+async def add_report(request: Request):
     try:
+        if int(request.headers.get("content-length") or 0) > SIGHTING_BODY_MAX:
+            raise HTTPException(413, "too big: photos are shrunk before sending, this one wasn't")
+    except ValueError:
+        raise HTTPException(400, "bad request")
+    raw_body = b""
+    async for chunk in request.stream():
+        raw_body += chunk
+        if len(raw_body) > SIGHTING_BODY_MAX:
+            raise HTTPException(413, "too big: photos are shrunk before sending, this one wasn't")
+    try:
+        body = json.loads(raw_body)
+    except ValueError:
+        raise HTTPException(400, "not JSON")
+    if not isinstance(body, dict):
+        raise HTTPException(400, "need lat, lon, kind")
+    try:
+        kind = str(body.get("kind", "other"))
         rep_ = {"lat": round(float(body["lat"]), 4), "lon": round(float(body["lon"]), 4),
-                "kind": str(body.get("kind", "other"))[:20], "size": float(body["size"]) if body.get("size") not in (None, "") else None,
+                "kind": kind if kind in SIGHTING_KINDS else "other", "size": float(body["size"]) if body.get("size") not in (None, "") else None,
                 "note": str(body.get("note") or "")[:200], "t": str(body.get("t") or datetime.now(timezone.utc).isoformat())}
         rt = datetime.fromisoformat(rep_["t"].replace("Z", "+00:00"))
-        rep_["t"] = (rt if rt.tzinfo else rt.replace(tzinfo=timezone.utc)).isoformat()
-    except (KeyError, TypeError, ValueError):
+        rep_["t"] = (rt if rt.tzinfo else rt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc).isoformat()
+        if body.get("olat") not in (None, "") and body.get("olon") not in (None, ""):      # where you were standing
+            obs = {"lat": float(body["olat"]), "lon": float(body["olon"])}
+            if valid_point(obs):
+                rep_.update(olat=round(obs["lat"], 4), olon=round(obs["lon"], 4))
+        cid = body.get("cid")
+        if isinstance(cid, str) and re.fullmatch(r"[\w.-]{6,64}", cid):
+            for old in REPORTS:              # the same sighting sent again (its first answer was lost): don't store it twice
+                if old.get("cid") == cid:
+                    return {"reports": REPORTS, "id": old.get("id")}
+            rep_["cid"] = cid
+        if body.get("src") in ("gps", "pin", "home", "map"):
+            rep_["src"] = body["src"]
+        if body.get("acc") not in (None, ""):
+            acc = float(body["acc"])
+            if math.isfinite(acc) and acc >= 0:
+                rep_["acc"] = round(min(acc, 1e6))
+    except (KeyError, TypeError, ValueError, OverflowError):
         raise HTTPException(400, "need lat, lon, kind")
     if not valid_point(rep_) or (rep_["size"] is not None and not (math.isfinite(rep_["size"]) and 0 <= rep_["size"] <= 300)):
         raise HTTPException(400, "lat/lon or size out of range")
-    rep_["id"] = f"r{int(time.time() * 1000)}"
+    photo_bytes = None
+    photo = body.get("photo")
+    if photo not in (None, ""):
+        if not (isinstance(photo, str) and photo.startswith("data:image/jpeg;base64,")):
+            raise HTTPException(400, "photo must be a JPEG")
+        import base64
+        try:
+            photo_bytes = base64.b64decode(photo.split(",", 1)[1], validate=True)
+        except Exception:
+            raise HTTPException(400, "photo isn't valid base64")
+        if len(photo_bytes) > 3 * 1048576 or photo_bytes[:3] != b"\xff\xd8\xff":
+            raise HTTPException(400, "photo must be a JPEG under 3 MB")
+    n = int(time.time() * 1000)
+    taken = {r.get("id") for r in REPORTS}
+    while f"r{n}" in taken:                  # two sightings in the same millisecond still get their own id
+        n += 1
+    rep_["id"] = f"r{n}"
+    if photo_bytes:
+        def write():
+            SIGHTINGS.mkdir(parents=True, exist_ok=True)
+            write_atomic(SIGHTINGS / f"{rep_['id']}.jpg", photo_bytes)
+        await run_in_threadpool(write)
+        rep_["photo"] = True
     REPORTS.append(rep_)
+    for old in REPORTS[:-500]:
+        _drop_sighting_files(old.get("id"))
     REPORTS[:] = REPORTS[-500:]
     save_settings()
-    return {"reports": REPORTS}
+    pid = str(body.get("pid") or "")
+    _keep_task(asyncio.create_task(_snapshot_sighting(rep_["id"], pid if re.fullmatch(r"IDR\w{2,5}", pid) else None)))
+    return {"reports": REPORTS, "id": rep_["id"]}
+
+
+def _drop_sighting_files(rid):
+    if rid and _RID_RE.fullmatch(str(rid)):
+        for suffix in (".jpg", "-radar.png"):
+            (SIGHTINGS / f"{rid}{suffix}").unlink(missing_ok=True)
 
 
 @app.delete("/api/reports/{rid}")
 async def delete_report(rid: str):
     REPORTS[:] = [r for r in REPORTS if r.get("id") != rid]
+    _drop_sighting_files(rid)
     save_settings()
     return {"reports": REPORTS}
+
+
+@app.get("/api/reports/{rid}/{what}")
+async def report_file(rid: str, what: str):
+    if not _RID_RE.fullmatch(rid) or what not in ("photo", "radar"):
+        raise HTTPException(404, "not found")
+    f = SIGHTINGS / (f"{rid}.jpg" if what == "photo" else f"{rid}-radar.png")
+    if not f.exists():
+        raise HTTPException(404, "not saved for this sighting")
+    return FileResponse(f, media_type="image/jpeg" if what == "photo" else "image/png", headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
+
+
+SIGHTING_CSV = ["id", "t", "kind", "size", "lat", "lon", "olat", "olon", "src", "acc", "note", "photo", "radar_pid", "radar_frame",
+                "radar_range_km", "radar_beam_km", "ddp", "wstar", "blh", "dts", "temp", "dew", "rh", "wind", "wdir", "gust", "cloud", "rain",
+                "cape", "cin", "li", "lcl", "shear6", "srh1", "srh3", "stp", "scp", "lr75", "lr85"]
+
+
+@app.get("/api/reports.csv")
+async def reports_csv():
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(SIGHTING_CSV)
+    for r in REPORTS:
+        env, rad = r.get("env") or {}, r.get("radar") or {}
+        flat = {**env, **r, "radar_pid": rad.get("pid"), "radar_frame": rad.get("frame"), "radar_range_km": rad.get("range_km"),
+                "radar_beam_km": rad.get("beam_km"), "photo": "yes" if r.get("photo") else ""}
+        row = ["" if flat.get(k) is None else flat.get(k) for k in SIGHTING_CSV]
+        # text a spreadsheet would run as a formula gets a leading apostrophe (numbers such as -31.65 are left alone)
+        w.writerow([f"'{v}" if isinstance(v, str) and v and v[0] in "=+-@\t\r" else v for v in row])
+    return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="radarhound-sightings.csv"'})
 
 
 @app.get("/api/borders")

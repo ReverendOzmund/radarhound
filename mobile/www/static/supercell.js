@@ -157,7 +157,7 @@ const ENV = { stp: { key: "stp", levels: [0.5, 1, 2, 4], name: "STP" }, scp: { k
 function drawEnvOverlay() {
   const e = ENV[S.settings.envOverlay];
   if (!e || S.settings.view === "fc" || !S.radar) return;
-  const D = fcData("svr", S.settings.fcModel || "best");
+  const D = fcData(e.kind || "svr", S.settings.fcModel || "best");
   if (!D) return;
   const t = currentTime();
   if (!t) return;
@@ -169,13 +169,25 @@ function drawEnvOverlay() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.font = `bold ${10 * d}px "Barlow Semi Condensed", sans-serif`;
   L.forEach(({ lev, segs }, li) => {
-    ctx.strokeStyle = ctx.fillStyle = ["#7dd36a", "#f7e83a", "#f07b17", "#e23ad6"][li];
+    ctx.strokeStyle = ctx.fillStyle = (e.colors || ["#7dd36a", "#f7e83a", "#f07b17", "#e23ad6"])[li];
     ctx.lineWidth = (1.4 + li * 0.5) * d;
     ctx.setLineDash(li === 0 ? [5 * d, 4 * d] : []);
     strokeSegments(segs, `${e.name} ${lev}`);
     ctx.setLineDash([]);
   });
 }
+
+// dust devil potential layers and overlay (worked out on the server, see app/dustdevil.py; the Right-now line is in dustdevil.js)
+const DD_SCALE = scale([[1, "#2a4b5c"], [2, "#8a7a4a"], [4, "#f7e83a"], [6, "#f07b17"], [8, "#e0261f"], [10, "#e23ad6"]], { clearBelow: true });
+const ddLabel = v => (v == null ? "unknown" : v >= 7 ? "very likely" : v >= 4 ? "likely" : v >= 2 ? "possible" : "unlikely");
+Object.assign(FC_LAYERS, {
+  ddp: { name: "Dust devil potential", unit: "/ 10", kind: "dd", key: "ddp", sc: DD_SCALE, group: "Severe weather" },
+  wstar: { name: "Thermal strength (w*)", unit: "m/s", kind: "dd", key: "wstar",
+    sc: scale([[0.5, "#25306e"], [1.5, "#2f6fb0"], [2, "#3fb0a0"], [2.5, "#7dd36a"], [3, "#f7e83a"], [3.5, "#f07b17"], [4.5, "#e0261f"]], { clearBelow: true }), group: "Severe weather" },
+  blh: { name: "Boundary layer depth", unit: "m", kind: "dd", key: "blh",
+    sc: scale([[200, "#25306e"], [800, "#2f6fb0"], [1500, "#3fb0a0"], [2200, "#7dd36a"], [3000, "#f7e83a"], [4000, "#f07b17"], [5000, "#e0261f"]]), group: "Severe weather" },
+});
+ENV.ddp = { key: "ddp", kind: "dd", levels: [2, 4, 7], name: "Dust devil", colors: ["#c9b27a", "#f7e83a", "#f07b17"] };
 
 // severe-weather forecast layers (computed on the server from the model wind profile)
 Object.assign(FC_LAYERS, {

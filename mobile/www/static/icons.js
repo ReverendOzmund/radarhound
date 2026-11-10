@@ -13,11 +13,12 @@
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.6" r=".9" fill="currentColor"/>',
     warn: '<path d="M12 3.5 2.5 20h19L12 3.5z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.3" r=".9" fill="currentColor"/>',
     flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
   };
   const svg = n => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
-  const GLYPH = /^[\s◧⚡\u{1F50E}\u{1F4CF}⛈◎✂ⓘ⚠⚑️]+/u;
+  const GLYPH = /^[\s◧⚡\u{1F50E}\u{1F4CF}\u{1F441}⛈◎✂ⓘ⚠⚑️]+/u;
   const CHIPS = { modesChip: "modes", findChip: "find", ltgChip: "bolt", rulerChip: "ruler", cellsChip: "cells",
-    meChip: "me", xsChip: "section", explainChip: "info", warnChip: "warn", wxwChip: "flag" };
+    meChip: "me", sightChip: "eye", xsChip: "section", explainChip: "info", warnChip: "warn", wxwChip: "flag" };
 
   function dress(el, icon) {
     const text = el.textContent.replace(GLYPH, "").trim();

@@ -19,6 +19,7 @@ from pathlib import Path
 import httpx
 
 import os
+from . import dustdevil
 FC_HALF = 600
 # Open-Meteo's free tier counts every grid point as a call (10,000 a day, 600 a minute), so the grid
 # stays coarse: 13 x 13 points = 100 km spacing, 169 calls per layer group per refresh.
@@ -50,6 +51,11 @@ KINDS["svr"] = {"api": "https://api.open-meteo.com/v1/forecast", "vars": {
     "ws0": "wind_speed_10m", "wd0": "wind_direction_10m", "ws925": "wind_speed_925hPa", "wd925": "wind_direction_925hPa",
     "ws850": "wind_speed_850hPa", "wd850": "wind_direction_850hPa", "ws700": "wind_speed_700hPa", "wd700": "wind_direction_700hPa",
     "ws500": "wind_speed_500hPa", "wd500": "wind_direction_500hPa"}, "models": True, "derive": "svr"}
+# dust devil potential: surface heating, boundary layer depth, dryness and light wind (see dustdevil.py)
+KINDS["dd"] = {"api": "https://api.open-meteo.com/v1/forecast", "vars": {
+    "temp": "temperature_2m", "rh": "relative_humidity_2m", "blh": "boundary_layer_height", "sw": "shortwave_radiation",
+    "ts": "soil_temperature_0cm", "sm": "soil_moisture_0_to_1cm", "rain": "precipitation"},
+    "wind": ("wind_speed_10m", "wind_direction_10m"), "models": True, "derive": "dd"}
 SVR_Z = [0.0, 0.75, 1.5, 3.0, 5.6]          # approximate heights (km AGL) of 10 m, 925, 850, 700, 500 hPa
 
 
@@ -161,6 +167,25 @@ def _assemble(rows, spec, kind, lat0, half, n):
                 if r:
                     for k in keys:
                         out[k][t][p] = r[k]
+        return {"half": half, "n": n, "time": times, "kind": kind, "vars": out}
+    if spec.get("derive") == "dd":
+        keys = ["ddp", "wstar", "blh", "dts", "u", "v"]
+        out = {k: [[None] * len(rows) for _ in range(nt)] for k in keys}
+        sp_k, dr_k = spec["wind"]
+        for p, row in enumerate(rows):
+            H = row.get("hourly", {})
+            for t in range(nt):
+                def get(k, H=H, t=t):
+                    arr = H.get(spec["vars"][k])
+                    return arr[t] if arr and t < len(arr) else None
+                ws, wd = (H.get(sp_k) or [None] * nt)[t], (H.get(dr_k) or [None] * nt)[t]
+                r = dustdevil.index(get("temp"), get("rh"), ws, get("blh"), get("sw"), get("ts"), get("sm"), get("rain"))
+                if r:
+                    for k in ("ddp", "wstar", "blh", "dts"):
+                        out[k][t][p] = r[k]
+                if ws is not None and wd is not None:
+                    out["u"][t][p] = round(-ws * math.sin(math.radians(wd)), 1)
+                    out["v"][t][p] = round(-ws * math.cos(math.radians(wd)), 1)
         return {"half": half, "n": n, "time": times, "kind": kind, "vars": out}
     keys = list(spec["vars"]) + (["u", "v"] if spec.get("wind") else [])
     out = {k: [[None] * len(rows) for _ in range(nt)] for k in keys}

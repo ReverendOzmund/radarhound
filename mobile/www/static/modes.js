@@ -30,6 +30,8 @@ const MODES = [
     set: { radar: "home", view: "sat", layout: 1, satLayer: "ir13e", lightning: true, ltgDensity: true } },
   { id: "fire", name: "Fire weather", tag: "Forecast", desc: "McArthur fire danger, gusts, humidity and temperature, with satellite fire hotspots.",
     set: { radar: "home", view: "fc", layout: 4, fcLayer: "ffdi", paneSrc: { 1: { fc: "l:gust" }, 2: { fc: "l:rh" }, 3: { fc: "l:temp" } }, fires: true, fcParticles: true } },
+  { id: "dustdevil", name: "Dust devil day", tag: "Forecast", desc: "Dust devil potential beside thermal strength, boundary layer depth and temperature: hot, dry, sunny ground under light wind.",
+    set: { radar: "home", view: "fc", layout: 4, fcLayer: "ddp", paneSrc: { 1: { fc: "l:wstar" }, 2: { fc: "l:blh" }, 3: { fc: "l:temp" } }, fcIso: "none", fcParticles: true } },
   { id: "smoke", name: "Smoke and air", tag: "Forecast", desc: "PM2.5 beside carbon monoxide (a bushfire smoke tracer), with fire hotspots.",
     set: { radar: "home", view: "fc", layout: 2, fcLayer: "pm25", paneSrc: { 1: { fc: "l:co" } }, fires: true } },
   { id: "rain", name: "Heavy rain and flooding", tag: "Live", desc: "Reflectivity beside rainfall since 9am, slow-moving cells highlighted by the warning engine.",

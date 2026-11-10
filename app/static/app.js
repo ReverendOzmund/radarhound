@@ -1566,13 +1566,14 @@ function updateReadout() {
   $("roSat").innerHTML = rot ? (S.mode === "raw"
       ? `<small>${rot.tvs ? "TVS" : "Mesocyclone"}:</small> Vrot ${Math.round(rot.vrot * 1.944)} kt, ${rot.diam} km wide, base ${rot.base.toFixed(1)} km, depth ${rot.depth.toFixed(1)} km${rot.tds ? ", possible debris" : ""}`
       : `<small>Doppler couplet:</small> ΔV ${Math.round(rot.dv)} km/h across ${rot.diam} km`)
-    : rpt ? `<small>Report:</small> ${esc(REPORT_KINDS[rpt.kind] || rpt.kind)}${rpt.size ? ` ${esc(rpt.size)} mm` : ""} at ${fmtTime.format(new Date(rpt.t))}${rpt.note ? `, ${esc(rpt.note)}` : ""}`
+    : rpt ? `<small>Sighting:</small> ${esc(REPORT_KINDS[rpt.kind] || rpt.kind)}${rpt.size ? ` ${esc(rpt.size)} mm` : ""} at ${fmtTime.format(new Date(rpt.t))}${rpt.note ? `, ${esc(rpt.note)}` : ""}`
     : fire ? `<small>Fire hotspot:</small> ${fire.sat}, ${fmtDate.format(fire.time)} ${fmtTime.format(fire.time)}, ${fire.frp.toFixed(0)} MW`
     : stn ? `<small>${esc(stn.name)}:</small> ${stn.t ?? "–"}° dew ${stn.td ?? "–"}°, wind ${stn.spd ?? "–"} km/h${stn.gust ? ` gust ${stn.gust}` : ""}${stn.msl ? `, ${stn.msl} hPa` : ""}`
     : S.settings.view === "both" ? satReadout(x, y) : "";
-  const showBeam = S.mode === "raw" && S.settings.view !== "sat" && v0.beam != null;
+  const lb = liveBeamKm(x, y);
+  const showBeam = (S.mode === "raw" && S.settings.view !== "sat" && v0.beam != null) || lb != null;
   $("roBeamLbl").hidden = $("roBeam").hidden = !showBeam;
-  if (showBeam) $("roBeam").textContent = beamText(v0.beam);
+  if (showBeam) $("roBeam").textContent = beamText(lb != null ? lb : v0.beam);
   const others = activePanes().slice(1);
   $("roPanes").innerHTML = others.length && S.settings.view !== "sat"
     ? `<dl class="ro-panes">${others.map(p => { const v = paneValue(p, x, y); return `<dt>${paneName(p)}</dt><dd>${swatchHtml(v)}${v.html}</dd>`; }).join("")}</dl>`
@@ -1585,7 +1586,8 @@ function renderPin() {
   if (!S.pin || !S.cfg || !S.radar || S.radar.lat == null) { panel.hidden = true; tap.hidden = true; return; }
   if (isPhone()) {      // phones have no hover: show the pinned value right on the map
     const v = paneValue(PANES[0], ...S.pin), pt = placeText(...S.pin);
-    tap.innerHTML = `${swatchHtml(v)}<span>${v.html}</span><small>${pt.home}</small><button id="tapClose" aria-label="Clear pin">×</button>`;
+    const tb = liveBeamKm(...S.pin);
+    tap.innerHTML = `${swatchHtml(v)}<span>${v.html}</span><small>${pt.home}${v.color && tb != null && tb >= BEAM_NOTE_KM ? `<br><em class="beam-note">beam ${beamShort(tb)}</em>` : ""}</small><button id="tapClose" aria-label="Clear pin">×</button>`;
     tap.hidden = false;
     $("tapClose").onclick = () => { S.pin = null; renderPin(); draw(); };
   }
@@ -1596,7 +1598,8 @@ function renderPin() {
   const beam = vals.find(o => o.v.beam != null)?.v.beam;
   $("pinBody").innerHTML = `<dl class="ro-panes">${vals.map(({ p, v }) => `<dt>${paneName(p)}</dt><dd>${swatchHtml(v)}${v.html}</dd>`).join("")}</dl>
     ${S.settings.view === "both" && satTbAt(x, y) != null ? `<div class="ro-sat">${satReadout(x, y)}</div>` : ""}
-    <dl class="ro-grid"><dt>From radar</dt><dd>${pt.radar}</dd><dt>From home</dt><dd>${pt.home}</dd><dt>Position</dt><dd>${pt.pos}</dd>${S.mode === "raw" && beam != null ? `<dt>Beam height</dt><dd>${beamText(beam)}</dd>` : ""}</dl>`;
+    <dl class="ro-grid"><dt>From radar</dt><dd>${pt.radar}</dd><dt>From home</dt><dd>${pt.home}</dd><dt>Position</dt><dd>${pt.pos}</dd>${S.mode === "raw" && beam != null ? `<dt>Beam height</dt><dd>${beamText(beam)}</dd>` : ""}${liveBeamKm(x, y) != null ? `<dt>Beam height</dt><dd>${beamText(liveBeamKm(x, y))} <small>lowest scan</small></dd>` : ""}</dl>
+    ${vals[0].v.color && beamCaveat(liveBeamKm(x, y)) ? `<p class="beam-warn">${beamCaveat(liveBeamKm(x, y))}</p>` : ""}`;
 }
 
 function renderLegend() {
@@ -1767,6 +1770,7 @@ document.addEventListener("keydown", e => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(tag) && document.activeElement.type !== "range") return;
   if (document.activeElement?.isContentEditable) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;       // leave Ctrl+C, Ctrl+P, Alt+Left etc. to the browser
+  if ((!$("repDlg").hidden || !$("sightDlg").hidden) && e.key !== "Escape") return;      // the map's shortcuts stay off behind the sighting dialogs
   if (e.code === "Space" && tag === "BUTTON") return;   // Space on a focused button presses it
   if (e.code === "Space") { e.preventDefault(); play(!S.playing); }
   else if (e.code === "ArrowLeft") { if (tag === "INPUT") e.preventDefault(); step(-1); }     // a focused slider would move again
@@ -1775,10 +1779,15 @@ document.addEventListener("keydown", e => {
   else if (e.key === "?") toggleHelp();
   else if (e.key === "x" || e.key === "X") $("xsChip").click();
   else if (e.key === "c" || e.key === "C") $("cellsChip").click();
+  else if ((e.key === "s" || e.key === "S") && S.mode !== "raw" && !document.body.classList.contains("kiosk") && !document.querySelector(".help:not([hidden])")) {
+    e.preventDefault(); $("sightChip").click();      // (in raw volume mode S stays storm-relative velocity)
+  }
   else if (e.key === "p" || e.key === "P") { PERF.toggle(); $("perfOn").checked = PERF.on; }
   else if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFind(true); }
   else if (e.key === "Escape") {
-    if (!$("homeDlg").hidden) $("homeDlg").hidden = true;
+    if (!$("repDlg").hidden) closeSightingDialog();
+    else if (!$("sightDlg").hidden) closeSightings();
+    else if (!$("homeDlg").hidden) $("homeDlg").hidden = true;
     else if (!$("placeBox").hidden) toggleFind(false);
     else if (S.picking) { S.picking = null; $("panes").classList.remove("picking"); updateStamp(); }
     else if (!$("help").hidden) toggleHelp(false);

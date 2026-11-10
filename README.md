@@ -40,6 +40,9 @@ and `WARNINGS_FEED` (your state) in `docker-compose.yml`; see [Configure](#confi
   Radarhound's own tornado / severe thunderstorm / flash flood warnings and model watches, a verification log
 - **Satellite:** Himawari-9 raw infrared and water vapour (real cloud-top temperatures), GeoColor, day
   cloud phase, night microphysics, dust, air mass
+- **Sightings:** a Log sighting button for what you can see (dust devil, funnel, hail, damage), kept with
+  your photo, the radar frame and the forecast model's numbers for that spot and hour, plus a dust devil
+  potential layer and a range caveat on storm cells far from the radar
 - **Lightning:** Blitzortung's community network, with thunder rings and nearby-strike alerts
 - **Forecasts:** 30+ Windy-style map layers (wind particles, CAPE, SCP/STP, helicity, upper air, sea,
   air quality), model comparison, skew-T soundings, a rain-in-the-next-hour nowcast and BoM-style rain ranges
@@ -137,6 +140,10 @@ Copy `mobile/out/radarhound.apk` to `app/static/downloads/` and rebuild the serv
 another, so uninstall the old app first. If you change the page (`app/static`), run
 `python3 mobile/build_phone.py` first so phone mode gets the same page.
 
+Server mode always shows the server's current page, so it picks up new features as soon as the server is
+updated. Phone mode carries its own copy of the page inside the APK, so new features reach phone mode
+only when the APK is rebuilt and reinstalled.
+
 ## Run
     docker compose up -d --build
 Then open http://localhost:8686 (or http://<server-ip>:8686).
@@ -218,7 +225,7 @@ and allow location "all the time"; in a browser it needs https.
 
 Every Radarhound warning is logged with its peak core, rotation and lightning, the towns it covered, storm
 reports inside it, and whether BoM warned for those towns. The Warning verification panel shows the last
-30 days, plus BoM thunderstorm warnings Radarhound didn't match. Use it (and pinned-point storm reports) to
+30 days, plus BoM thunderstorm warnings Radarhound didn't match. Use it (and your logged sightings) to
 tune the thresholds.
 
 ## Password
@@ -275,6 +282,49 @@ In Raw volume mode, "Save case" bookmarks the current scan; the Saved cases menu
 The Cells button (or C) tracks reflectivity cores above the Cell threshold across the live loop:
 outlines, 60-minute projected paths with 15-minute ticks, and arrival times at home in the side panel.
 Cells whose path passes within ~12 km of home are drawn in red.
+
+Far from the radar the lowest beam is high above the ground (roughly 1 km up at 80 km, 3 km at 165 km,
+6 km at 255 km, 13 km at 400 km, 19 km at 500 km, taking BoM's lowest scan as 0.5 degrees), so a cell's
+dBZ there is measured in the upper part of the storm and says little about what's reaching the ground.
+From 3 km up the label shows the beam height (`60▲ ↑4.2 km`); from 6 km the number gets a `~` and the
+note turns red, and the Storm cells panel says so in words. The pinned point and the cursor readout show
+the beam height too. Pick a closer radar or a shorter range for a truer reading.
+
+## Log sighting
+**Log sighting** (toolbar, or S on the live radar; in raw volume mode S is still storm-relative velocity) records what you can actually see: dust devil, funnel cloud, tornado,
+hail, wind damage, heavy rain, lightning damage, wall cloud, shelf cloud or anything else.
+
+- **Where:** your GPS position (https, localhost or the app's phone mode), the pinned point, home or the
+  middle of the map. If it's off in the distance, pick a direction and a distance ("to the N, 6 km") and
+  it's plotted there, with a dashed line back to where you stood.
+- **When:** now, or any time you set. **Photo:** optional, shrunk to 1600 px before it's sent.
+- **No connection?** It's kept on the device and sent when the connection comes back.
+- Every sighting is saved with the **radar frame nearest that time** (radar frames are otherwise only
+  kept for `RETENTION_HOURS`) and the **forecast model's numbers for that spot and hour**: dust devil
+  potential, thermal strength, mixed-layer depth, temperature, humidity, wind, CAPE, CIN, shear,
+  helicity, STP, SCP and lapse rates.
+- **Sightings log** (Layers and settings, Map) lists them with those numbers, the photo and the radar
+  frame; **Export CSV** gives one row per sighting for a spreadsheet. `GET /api/reports.csv` is the same
+  file from the server. Sightings show on the map for 24 hours, and all except dust devils count as
+  storm reports in the warning verification log.
+
+Files live in the data volume under `sightings/`; the list itself is in `settings.json`.
+
+## Dust devil potential
+Dust devils are too small and shallow for weather radar, so this is worked out from the forecast model
+(Open-Meteo): sunshine on dry ground gives a heat flux, the boundary layer depth says how big the
+thermals can get, and together they give the convective velocity scale w*. That's then scaled down for
+humid air, wind that's too strong (or dead calm), a ground that's no hotter than the air, and rain.
+
+- **0 to 10:** under 2 unlikely, 2 to 4 possible, 4 to 7 likely, 7 and over very likely.
+- **Right now card:** a line appears when it's 2 or more now or later today, with the peak time. Tap it
+  for the map.
+- **Forecast layers** (Severe weather group): Dust devil potential, Thermal strength (w*) and Boundary
+  layer depth. The **Dust devil day** mode puts them side by side with temperature.
+- **Environment overlay** (Layers and settings, Storms): dust devil contours at 2, 4 and 7 over the radar.
+
+It is a heuristic, not a verified forecast. Log every dust devil you see (and the hot days you don't see
+any): the saved numbers are how the thresholds get tuned.
 
 ## Forecast soundings
 "sounding" in the forecast panel opens a model skew-T and hodograph for home (or the pinned point), with
@@ -335,7 +385,7 @@ served over https (for example behind a reverse proxy) or opened on localhost.
   hail. Uses the freezing level for the scan time. Plus a dual-pol rain rate (R(Z) and R(KDP)).
 - Contours: overlay hail size (MESH 10/20/40/60 mm), rotation, 45 dBZ tops or VIL on any raw pane.
 - Storm cells now show a trend (strengthening / weakening) and the strongest cells in view.
-- Storm reports: pin a point, "report", and log hail size, wind damage, flooding, funnels and so on.
+- Sightings: Log sighting (or pin a point, "log sighting") for hail size, wind damage, flooding, funnels, dust devils and so on.
 - Fires: NASA FIRMS satellite hotspots from the last 24 hours (VIIRS and MODIS).
 - Me: your live position and heading on the map (needs https or localhost), for chasing.
 - Soundings: observed radiosonde (University of Wyoming archive, OBS_SOUNDING_STATION) as well as

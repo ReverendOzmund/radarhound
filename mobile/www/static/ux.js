@@ -464,6 +464,9 @@ function paletteItems() {
   add("Layer", `${S.settings.lightning ? "Hide" : "Show"} lightning`, () => $("ltgChip").click());
   add("Layer", `${cellsOn() ? "Hide" : "Show"} storm cells`, () => $("cellsChip").click());
   for (const [lv, n] of Object.entries(LEVELS)) add("Detail level", n, () => applyLevel(lv));
+  add("Action", "Log a sighting (dust devil, funnel, hail…)", () => openSightingDialog());
+  add("Action", "Sightings log", () => openSightings());
+  tog("sightings", "lyrReports");
   add("Action", "Set home", () => openHomeDialog());
   add("Action", "Find a place on the map", () => toggleFind(true));
   add("Action", "Copy link to this view", copyShareLink);
@@ -612,7 +615,7 @@ async function loadVerify() {
     ${rows ? `<div class="verify-scroll"><table class="verify-table"><thead><tr><th>Issued</th><th>Type</th><th>Area</th><th>Lasted</th><th>Peak</th><th>Verified</th></tr></thead><tbody>${rows}</tbody></table></div>`
       : `<p class="dim">No Radarhound warnings yet. Every warning is logged here as it happens.</p>`}
     ${r.bom_missed.length ? `<details><summary>BoM thunderstorm warnings without a Radarhound warning (${r.bom_missed.length})</summary><ul>${r.bom_missed.slice(0, 20).map(b => `<li>${esc(b.title)} <span class="dim">${fmtDate.format(new Date(b.first))}</span></li>`).join("")}</ul></details>` : ""}
-    <p class="dim">Matching is by town names and storm reports inside the warning area. Log a report from a pinned point to help.</p>`;
+    <p class="dim">Matching is by town names and storm reports inside the warning area. Log sightings (toolbar) to help.</p>`;
 }
 
 
